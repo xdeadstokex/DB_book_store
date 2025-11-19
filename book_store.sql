@@ -13,11 +13,11 @@ GO
 --   1. nha_xuat_ban (Publisher)
 -- ======================================================
 CREATE TABLE nha_xuat_ban (
-    ma_nxb  INT           IDENTITY(1,1) PRIMARY KEY,
-    email   NVARCHAR(200) UNIQUE NOT NULL,
-    dia_chi NVARCHAR(200) UNIQUE NOT NULL,
-    sdt     NVARCHAR(200),
+    ma_nxb INT IDENTITY(1,1) PRIMARY KEY,
     ten_nxb NVARCHAR(200) NOT NULL,
+    email NVARCHAR(200) UNIQUE NOT NULL,
+    dia_chi NVARCHAR(200) NOT NULL,
+    sdt NVARCHAR(20)
 );
 GO
 
@@ -35,7 +35,6 @@ CREATE TABLE sach (
     kich_thuoc_bao_bi NVARCHAR(100),
     nha_cung_cap NVARCHAR(100),
     so_trang INT CHECK (so_trang > 0),
-    nguoi_dich NVARCHAR(100),
     so_sao_trung_binh DECIMAL(3,2) CHECK (so_sao_trung_binh BETWEEN 0 AND 5),
     hinh_thuc NVARCHAR(50),
     ngon_ngu NVARCHAR(50),
@@ -89,10 +88,10 @@ GO
 --   6. tac_gia (Author)
 -- ======================================================
 CREATE TABLE tac_gia (
-    ma_tg     INT            IDENTITY(1,1) PRIMARY KEY,
-    ten_tg    NVARCHAR(200)  NOT NULL
-    quoc_tich NVARCHAR(4096),
-    mo_ta     NVARCHAR(4096),
+    ma_tg INT IDENTITY(1,1) PRIMARY KEY,
+    ten_tg NVARCHAR(200) NOT NULL,
+    quoc_tich NVARCHAR(100),
+    mo_ta NVARCHAR(MAX)
 );
 GO
 
@@ -110,7 +109,30 @@ CREATE TABLE sach_tac_gia (
 GO
 
 -- ======================================================
---   8. khach_hang (Customer - Base)
+--   8. nguoi_dich (Translator)
+-- ======================================================
+CREATE TABLE nguoi_dich (
+    ma_ng_dich INT IDENTITY(1,1) PRIMARY KEY,
+    ten_ng_dich NVARCHAR(200) NOT NULL,
+    ngon_ngu_dich NVARCHAR(128) NOT NULL
+);
+GO
+
+-- ======================================================
+--   9. sach_nguoi_dich (Book-Translator)
+-- ======================================================
+CREATE TABLE sach_nguoi_dich (
+    ma_sach INT NOT NULL,
+    ma_ng_dich INT NOT NULL,
+    
+    PRIMARY KEY (ma_sach, ma_ng_dich),
+    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE CASCADE,
+    FOREIGN KEY (ma_ng_dich) REFERENCES nguoi_dich(ma_ng_dich) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+--   10. khach_hang (Customer - Base)
 -- ======================================================
 CREATE TABLE khach_hang (
     ma_khach_hang INT IDENTITY(1,1) PRIMARY KEY,
@@ -123,7 +145,7 @@ CREATE TABLE khach_hang (
 GO
 
 -- ======================================================
---   9. thanh_vien (Member)
+--   11. thanh_vien (Member)
 -- ======================================================
 CREATE TABLE thanh_vien (
     ma_khach_hang INT PRIMARY KEY,
@@ -141,7 +163,7 @@ CREATE TABLE thanh_vien (
 GO
 
 -- ======================================================
---   10. khach (Guest)
+--   12. khach (Guest)
 -- ======================================================
 CREATE TABLE khach (
     ma_khach_hang INT PRIMARY KEY,
@@ -152,7 +174,7 @@ CREATE TABLE khach (
 GO
 
 -- ======================================================
---   11. dia_chi_cu_the (Address)
+--   13. dia_chi_cu_the (Address)
 -- ======================================================
 CREATE TABLE dia_chi_cu_the (
     ma_dia_chi INT IDENTITY(1,1) PRIMARY KEY,
@@ -167,43 +189,74 @@ CREATE TABLE dia_chi_cu_the (
 GO
 
 -- ======================================================
---   12. gio_hang (Shopping Cart)
+--   14. voucher (Voucher)
 -- ======================================================
-CREATE TABLE gio_hang (
-    ma_gio INT IDENTITY(1,1) PRIMARY KEY,
-    ma_khach_hang INT NOT NULL,
-    ma_sach INT NOT NULL,
-    so_luong INT NOT NULL CHECK (so_luong > 0),
-    ngay_them DATETIME DEFAULT GETDATE(),
+CREATE TABLE voucher (
+    ma_voucher INT IDENTITY(1,1) PRIMARY KEY,
+    ma_nxb INT NOT NULL,
+    ten_voucher NVARCHAR(200) NOT NULL,
+    bat_dau DATE NOT NULL,
+    ket_thuc DATE NOT NULL,
+    loai_giam NVARCHAR(20) CHECK (loai_giam IN (N'Phần trăm', N'Số tiền')),
+    gia_tri_giam DECIMAL(10,2) NOT NULL CHECK (gia_tri_giam > 0),
     
-    FOREIGN KEY (ma_khach_hang) REFERENCES khach_hang(ma_khach_hang) ON DELETE CASCADE,
-    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE CASCADE,
-    UNIQUE (ma_khach_hang, ma_sach)
+    FOREIGN KEY (ma_nxb) REFERENCES nha_xuat_ban(ma_nxb) ON DELETE CASCADE
 );
 GO
 
 -- ======================================================
---   13. don_hang (Order)
+--   15. khuyen_mai_voucher (Voucher Promotion)
+-- ======================================================
+CREATE TABLE khuyen_mai_voucher (
+    ma_voucher INT PRIMARY KEY,
+    dieu_kien_ap_dung NVARCHAR(MAX),
+    ngay_het_han DATETIME,
+    
+    FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+--   16. su_dung_voucher (Voucher Usage)
+-- ======================================================
+CREATE TABLE su_dung_voucher (
+    ma_voucher INT NOT NULL,
+    ma_khach_hang INT NOT NULL,
+    ngay_su_dung DATETIME DEFAULT GETDATE(),
+    
+    PRIMARY KEY (ma_voucher, ma_khach_hang),
+    FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE CASCADE,
+    FOREIGN KEY (ma_khach_hang) REFERENCES thanh_vien(ma_khach_hang) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+--   17. don_hang (Order)
 -- ======================================================
 CREATE TABLE don_hang (
     ma_don INT IDENTITY(1,1) PRIMARY KEY,
     ma_khach_hang INT NOT NULL,
-    ngay_dat DATETIME NOT NULL DEFAULT GETDATE(),
-    trang_thai NVARCHAR(50) NOT NULL,
-    tong_gia MONEY NOT NULL CHECK (tong_gia >= 0),
+    ma_voucher INT NULL,
+    thoi_diem_dat_hang DATETIME NOT NULL DEFAULT GETDATE(),
+    tong_tien_thanh_toan MONEY NOT NULL CHECK (tong_tien_thanh_toan >= 0),
+    trang_thai_don_hang NVARCHAR(50) NOT NULL,
+    gia_tri_giam_gia MONEY DEFAULT 0,
+    ngay_du_kien_nhan_hang DATETIME NULL,
     
-    FOREIGN KEY (ma_khach_hang) REFERENCES khach_hang(ma_khach_hang) ON DELETE CASCADE
+    FOREIGN KEY (ma_khach_hang) REFERENCES khach_hang(ma_khach_hang) ON DELETE CASCADE,
+    FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE SET NULL
 );
 GO
 
 -- ======================================================
---   14. chi_tiet_don_hang (Order Detail)
+--   18. chi_tiet_don_hang (Order Detail)
 -- ======================================================
 CREATE TABLE chi_tiet_don_hang (
     ma_don INT NOT NULL,
     ma_sach INT NOT NULL,
+    gia_ban MONEY NOT NULL CHECK (gia_ban >= 0),
     so_luong INT NOT NULL CHECK (so_luong > 0),
-    don_gia MONEY NOT NULL CHECK (don_gia >= 0),
+    the_loai NVARCHAR(100),
     
     PRIMARY KEY (ma_don, ma_sach),
     FOREIGN KEY (ma_don) REFERENCES don_hang(ma_don) ON DELETE CASCADE,
@@ -212,7 +265,21 @@ CREATE TABLE chi_tiet_don_hang (
 GO
 
 -- ======================================================
---   15. kho (Inventory)
+--   19. thanh_toan (Payment)
+-- ======================================================
+CREATE TABLE thanh_toan (
+    ma_thanh_toan INT IDENTITY(1,1) PRIMARY KEY,
+    ma_don INT NOT NULL UNIQUE,
+    hinh_thuc NVARCHAR(50) NOT NULL,
+    trinh_trang NVARCHAR(50) NOT NULL,
+    thanh_tien MONEY NOT NULL CHECK (thanh_tien >= 0),
+    
+    FOREIGN KEY (ma_don) REFERENCES don_hang(ma_don) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+--   20. kho (Inventory)
 -- ======================================================
 CREATE TABLE kho (
     ma_kho INT IDENTITY(1,1) PRIMARY KEY,
@@ -224,7 +291,7 @@ CREATE TABLE kho (
 GO
 
 -- ======================================================
---   16. danh_gia (Review)
+--   21. danh_gia (Review)
 -- ======================================================
 CREATE TABLE danh_gia (
     ma_dg INT IDENTITY(1,1) PRIMARY KEY,
@@ -240,40 +307,12 @@ CREATE TABLE danh_gia (
 GO
 
 -- ======================================================
---   17. voucher (Voucher)
--- ======================================================
-CREATE TABLE voucher (
-    ma_voucher INT IDENTITY(1,1) PRIMARY KEY,
-    ten_voucher NVARCHAR(200) NOT NULL,
-    bat_dau DATE NOT NULL,
-    ket_thuc DATE NOT NULL,
-    loai_giam NVARCHAR(20) CHECK (loai_giam IN (N'Phần trăm', N'Số tiền')),
-    gia_tri_giam DECIMAL(10,2) NOT NULL CHECK (gia_tri_giam > 0)
-);
-GO
-
--- ======================================================
---   18. su_dung_voucher (Voucher Usage)
--- ======================================================
-CREATE TABLE su_dung_voucher (
-    ma_voucher INT NOT NULL,
-    ma_khach_hang INT NOT NULL,
-    ngay_su_dung DATETIME DEFAULT GETDATE(),
-    
-    PRIMARY KEY (ma_voucher, ma_khach_hang),
-    FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE CASCADE,
-    FOREIGN KEY (ma_khach_hang) REFERENCES thanh_vien(ma_khach_hang) ON DELETE CASCADE
-);
-GO
-
--- ======================================================
 --   INDEXES FOR PERFORMANCE
 -- ======================================================
 CREATE INDEX idx_sach_nxb ON sach(ma_nxb);
 CREATE INDEX idx_gia_ban_sach ON gia_ban(ma_sach);
-CREATE INDEX idx_gio_hang_khach ON gio_hang(ma_khach_hang);
 CREATE INDEX idx_don_hang_khach ON don_hang(ma_khach_hang);
-CREATE INDEX idx_don_hang_ngay ON don_hang(ngay_dat);
+CREATE INDEX idx_don_hang_ngay ON don_hang(thoi_diem_dat_hang);
 CREATE INDEX idx_danh_gia_sach ON danh_gia(ma_sach);
 GO
 
@@ -282,17 +321,23 @@ GO
 -- ======================================================
 
 -- Publishers
-INSERT INTO nha_xuat_ban (ten_nxb) VALUES 
-(N'Nhà xuất bản Trẻ'),
-(N'Nhà xuất bản Kim Đồng'),
-(N'Nhà xuất bản Văn học');
+INSERT INTO nha_xuat_ban (ten_nxb, email, dia_chi, sdt) VALUES 
+(N'Nhà xuất bản Trẻ', 'contact@nxbtre.com.vn', N'161B Lý Chính Thắng, Q.3, TP.HCM', '028-39316289'),
+(N'Nhà xuất bản Kim Đồng', 'info@nxbkimdong.com.vn', N'55 Quang Trung, Hai Bà Trưng, Hà Nội', '024-39434730'),
+(N'Nhà xuất bản Văn học', 'nxbvanhoc@hn.vnn.vn', N'18 Nguyễn Trường Tộ, Ba Đình, Hà Nội', '024-38223500');
 GO
 
 -- Authors
-INSERT INTO tac_gia (ten_tg) VALUES 
-(N'Nguyễn Nhật Ánh'),
-(N'Tô Hoài'),
-(N'Nam Cao');
+INSERT INTO tac_gia (ten_tg, quoc_tich, mo_ta) VALUES 
+(N'Nguyễn Nhật Ánh', N'Việt Nam', N'Nhà văn nổi tiếng với các tác phẩm văn học thiếu nhi'),
+(N'Tô Hoài', N'Việt Nam', N'Nhà văn, nhà thơ Việt Nam'),
+(N'Nam Cao', N'Việt Nam', N'Nhà văn hiện thực phê phán');
+GO
+
+-- Translators
+INSERT INTO nguoi_dich (ten_ng_dich, ngon_ngu_dich) VALUES 
+(N'Đỗ Kh.', N'Tiếng Anh'),
+(N'Lê Thu Hương', N'Tiếng Pháp');
 GO
 
 -- Categories
