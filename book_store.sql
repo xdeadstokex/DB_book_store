@@ -13,8 +13,11 @@ GO
 --   1. nha_xuat_ban (Publisher)
 -- ======================================================
 CREATE TABLE nha_xuat_ban (
-    ma_nxb INT IDENTITY(1,1) PRIMARY KEY,
-    ten_nxb NVARCHAR(200) NOT NULL
+    ma_nxb  INT           IDENTITY(1,1) PRIMARY KEY,
+    email   NVARCHAR(200) UNIQUE NOT NULL,
+    dia_chi NVARCHAR(200) UNIQUE NOT NULL,
+    sdt     NVARCHAR(200),
+    ten_nxb NVARCHAR(200) NOT NULL,
 );
 GO
 
@@ -86,8 +89,10 @@ GO
 --   6. tac_gia (Author)
 -- ======================================================
 CREATE TABLE tac_gia (
-    ma_tg INT IDENTITY(1,1) PRIMARY KEY,
-    ten_tg NVARCHAR(200) NOT NULL
+    ma_tg     INT            IDENTITY(1,1) PRIMARY KEY,
+    ten_tg    NVARCHAR(200)  NOT NULL
+    quoc_tich NVARCHAR(4096),
+    mo_ta     NVARCHAR(4096),
 );
 GO
 
