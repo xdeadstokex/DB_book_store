@@ -291,7 +291,20 @@ CREATE TABLE kho (
 GO
 
 -- ======================================================
---   21. danh_gia (Review)
+--   21. so luong mot loai sach moi kho
+-- ======================================================
+CREATE TABLE so_luong_mot_loai_sach_moi_kho (
+    ma_kho INT NOT NULL,
+    ma_sach INT NOT NULL,
+    so_luong_ton INT NOT NULL CHECK (so_luong_ton >= 0),
+    
+    FOREIGN KEY (ma_kho) REFERENCES kho(ma_kho) ON DELETE CASCADE
+    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+--   22. danh_gia (Review)
 -- ======================================================
 CREATE TABLE danh_gia (
     ma_dg INT IDENTITY(1,1) PRIMARY KEY,
