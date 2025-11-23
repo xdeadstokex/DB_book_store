@@ -9,3 +9,8 @@
 
 ## FILE RUNNING ORDER:
 - bookstore_drop -> bookstore_create_tables -> bookstore_functions -> bookstore_triggers -> bookstore_insert_data
+
+## DB OVERVIEW:
+<p style="margin-left: 40px;">
+  <img src="resource/table_overview.png">
+</p>
