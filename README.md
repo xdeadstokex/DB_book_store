@@ -18,3 +18,14 @@
 <p style="margin-left: 40px;">
   <img src="resource/table_overview.png">
 </p>
+
+## FOR BOTH FRONTEND AND BACKEND:
+- 1/ YOU MUST CREATE DB FIRST, MEAN DO AS ABOVE (OR IF WANT FAST TEST CAN DO **create_tables** and
+**insert_data** ONLY).
+
+- 2/ for sql server management studio user, MUST open TCP connection for backend to connect.
+<p style="margin-left: 40px;">
+  <img src="resource/open_TCP_connection.jpeg">
+</p>
+
+- 3/ dev backend and frontend as guided in how_to_run.txt in both backend and frontend folder.
