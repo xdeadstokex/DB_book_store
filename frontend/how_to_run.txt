@@ -1,5 +1,8 @@
 # In the folder with your HTML file, run the command in terminal then open http://localhost:9999
 python -m http.server 9999
 
+# backend will be host at http://localhost:4444
+# example api call:  GET - http://localhost:4444/api/books
+
 # click book_store.html for actual frontend
 # click test_apis.html to test backend apis response first
