@@ -7,16 +7,23 @@ go get github.com/denisenkom/go-mssqldb
 go build -o main.exe .
 
 
+# SETUP config.txt file
+# for window users
+# if you use user in sql server management studio then use this in config.txt (with correct user name and password)
+CONN_STRING=server=localhost;user id=sa;password=YourPass123!;database=book_store
+
+# if you use window authentiation in sql server management studio then use this in config.txt
+connString := "server=localhost;database=book_store;trusted_connection=yes"
+
+
+# open and login sql server management studio first before run (for backend to connect to sql)
 # run
 ./main.exe
 
 
-# for window users
-# if you use user in sql server management studio copy this to config.txt (with correct user name and password)
-CONN_STRING=server=localhost;user id=sa;password=YourPass123!;database=book_store
 
-# if you use window authentiation in sql server management studio copy this to config.txt
-connString := "server=localhost;database=book_store;trusted_connection=yes"
+
+
 
 
 # to test apis work or not pls go to frontend section and use test_api.html as guided
