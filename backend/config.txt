@@ -1,0 +1,1 @@
+CONN_STRING=server=172.17.0.1;user id=sa;password=YourPass123!;database=book_store
