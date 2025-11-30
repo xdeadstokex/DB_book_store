@@ -15,9 +15,9 @@ import (
 	_ "github.com/denisenkom/go-mssqldb"
 )
 
-// ###################
-// ## DATA STRUCTS ###
-// ###################
+//###################
+//## DATA STRUCTS ###
+//###################
 
 type Book struct {
 	MaSach     int     `json:"ma_sach"`
@@ -41,7 +41,6 @@ type BookDetail struct {
 	TonKho     int     `json:"ton_kho"`
 }
 
-// Input: Pointers allow optional fields (null in JSON = nil in Go)
 type BookInput struct {
 	TenSach    string   `json:"ten_sach"`
 	NamXuatBan int      `json:"nam_xuat_ban"`
@@ -67,9 +66,9 @@ type OrderInput struct {
 
 var db *sql.DB
 
-// ###################
-// ## MAIN SECTION ###
-// ###################
+//###################
+//## MAIN SECTION ###
+//###################
 func main() {
 	var err error
 	connStr, err := read_connection_string("config.txt")
@@ -83,15 +82,13 @@ func main() {
 
 	handle_apis()
 
-	log.Println("✅ API running on http://localhost:4444")
+	log.Println("OK! API running on http://localhost:4444")
 	log.Fatal(http.ListenAndServe(":4444", nil))
 }
 
-// ############################
-// ## HELPER FUNCS SECTION ####
-// ############################
-
-// SAFE CONVERTERS FOR NULL
+//############################
+//## HELPER FUNCS SECTION ####
+//############################
 func nullToInt(n sql.NullInt64) int {
 	if !n.Valid { return -1 }
 	return int(n.Int64)
@@ -119,14 +116,26 @@ func read_connection_string(filePath string) (string, error) {
 	return "", fmt.Errorf("missing CONN_STRING")
 }
 
-func set_CORS_headers(w http.ResponseWriter, flag int) {
+// Returns TRUE if the request was handled (OPTIONS), so the caller should return.
+func set_CORS_headers(w http.ResponseWriter, r *http.Request, flag int) bool {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	methods := "GET"
-	if flag == 0 { methods = "*" }
-	if flag == 2 { methods = "POST" }
+
+	var methods string
+	if flag == 0 { methods = "*";
+	} else if flag == 1 { methods = "GET"
+	} else if flag == 2 { methods = "POST"
+	} else if flag == 3 { methods = "GET, POST"
+	} else if flag == 4 { methods = "PUT"
+	} else if flag == 5 { methods = "DELETE"
+	} else { methods = "GET" // fallback default
+	}
+
 	w.Header().Set("Access-Control-Allow-Methods", methods)
+
+	if (r.Method == "OPTIONS") { w.WriteHeader(http.StatusOK); return true; }
+	return false;
 }
 
 func sendError(w http.ResponseWriter, code int, msg string) {
@@ -140,9 +149,9 @@ func sendSuccess(w http.ResponseWriter, msg string, data interface{}) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// #########################
-// ## APIS FUNCS SECTION ###
-// #########################
+//#########################
+//## APIS FUNCS SECTION ###
+//#########################
 func handle_apis() {
 	http.HandleFunc("/get_all_books", get_all_books)
 	http.HandleFunc("/get_book_by_id", get_book_by_id)
@@ -152,12 +161,13 @@ func handle_apis() {
 	http.HandleFunc("/create_customer_order", create_customer_order)
 }
 
-// 1. GET ALL (Handle NULLs)
-func get_all_books(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 1)
-	if r.Method == "OPTIONS" { return }
 
-	// Use generic query
+//######################
+//## 1. GET ALL BOOK ###
+//######################
+func get_all_books(w http.ResponseWriter, r *http.Request) {
+	if set_CORS_headers(w, r, 1) { return }
+
 	query := `
 		SELECT s.ma_sach, s.ten_sach, s.nam_xuat_ban, s.so_trang, ISNULL(gb.gia, 0)
 		FROM sach s
@@ -174,31 +184,27 @@ func get_all_books(w http.ResponseWriter, r *http.Request) {
 	var books []Book
 	for rows.Next() {
 		var b Book
-		// Use sql.Null* types to catch NULLs
 		var nNam, nPage sql.NullInt64
-		var nPrice sql.NullFloat64 // Price from OUTER APPLY can be NULL if no price exists
-		
+		var nPrice sql.NullFloat64 
 		if err := rows.Scan(&b.MaSach, &b.TenSach, &nNam, &nPage, &nPrice); err != nil {
-			log.Println("Scan error:", err)
 			continue
 		}
-		
-		// Convert to -1 if null
 		b.NamXuatBan = nullToInt(nNam)
 		b.SoTrang = nullToInt(nPage)
 		b.GiaHienTai = nullToFloat(nPrice)
-		if b.GiaHienTai == -1 { b.GiaHienTai = 0 } // Price 0 is better than -1 usually, but your call
-
+		if b.GiaHienTai == -1 { b.GiaHienTai = 0 }
 		books = append(books, b)
 	}
 	if books == nil { books = []Book{} }
 	json.NewEncoder(w).Encode(books)
 }
 
-// 2. GET BY ID (Handle NULLs)
+
+//########################
+//## 2. GET BOOK BY ID ###
+//########################
 func get_book_by_id(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 1)
-	if r.Method == "OPTIONS" { return }
+	if set_CORS_headers(w, r, 1) { return }
 
 	idStr := r.URL.Query().Get("id")
 	if idStr == "" { sendError(w, 400, "Missing ?id="); return }
@@ -212,7 +218,6 @@ func get_book_by_id(w http.ResponseWriter, r *http.Request) {
 		WHERE s.ma_sach = @p1
 	`
 	var b BookDetail
-	// Temp vars for nullable fields
 	var nNam, nNXB, nPage, nAge, nStock sql.NullInt64
 	var nLang, nForm, nDesc sql.NullString
 	var nWeight sql.NullFloat64
@@ -229,7 +234,6 @@ func get_book_by_id(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Assign with -1/"-1" logic
 	b.NamXuatBan = nullToInt(nNam)
 	b.MaNXB = nullToInt(nNXB)
 	b.SoTrang = nullToInt(nPage)
@@ -243,19 +247,18 @@ func get_book_by_id(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(b)
 }
 
-// 3. ADD BOOK (Debugged)
+
+//##################
+//## 3. ADD BOOK ###
+//##################
 func add_new_book(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 2)
-	if r.Method == "OPTIONS" { return }
+	if set_CORS_headers(w, r, 2) { return } // Flag 2 = POST
 
 	var input BookInput
-	// Strict error checking here
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields() // Optional: helps debug
-	
+	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
-		log.Println("JSON Error:", err)
-		sendError(w, 400, "Invalid JSON: " + err.Error())
+		sendError(w, 400, "Invalid JSON: "+err.Error())
 		return
 	}
 
@@ -282,16 +285,15 @@ func add_new_book(w http.ResponseWriter, r *http.Request) {
 	sendSuccess(w, "Added", map[string]int{"id": newID})
 }
 
-// 4. UPDATE BOOK
+
+//#####################
+//## 4. UPDATE BOOK ###
+//#####################
 func update_book_info(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 2) // POST (User preference)
-	if r.Method == "OPTIONS" { return }
+	if set_CORS_headers(w, r, 2) { return }
 
 	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		sendError(w, 400, "Missing ?id=")
-		return
-	}
+	if idStr == "" { sendError(w, 400, "Missing ?id="); return }
 	id, _ := strconv.Atoi(idStr)
 
 	var input BookInput
@@ -314,19 +316,18 @@ func update_book_info(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 500, err.Error())
 		return
 	}
-	sendSuccess(w, "Book Updated", nil)
+	sendSuccess(w, "Updated", nil)
 }
 
-// 5. DELETE BOOK
+
+//#####################
+//## 5. DELETE BOOK ###
+//#####################
 func delete_book_permanently(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 2) // POST (Action style)
-	if r.Method == "OPTIONS" { return }
+	if set_CORS_headers(w, r, 2) { return }
 
 	idStr := r.URL.Query().Get("id")
-	if idStr == "" {
-		sendError(w, 400, "Missing ?id=")
-		return
-	}
+	if idStr == "" { sendError(w, 400, "Missing ?id="); return }
 	id, _ := strconv.Atoi(idStr)
 
 	force := 0
@@ -344,13 +345,15 @@ func delete_book_permanently(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	sendSuccess(w, "Book Deleted", nil)
+	sendSuccess(w, "Deleted", nil)
 }
 
-// 6. CREATE ORDER (With Transaction)
+
+//######################
+//## 6. CREATE ORDER ###
+//######################
 func create_customer_order(w http.ResponseWriter, r *http.Request) {
-	set_CORS_headers(w, 2) // POST
-	if r.Method == "OPTIONS" { return }
+	if set_CORS_headers(w, r, 2) { return }
 
 	var input OrderInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
@@ -358,16 +361,11 @@ func create_customer_order(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Begin Transaction
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
-	if err != nil {
-		sendError(w, 500, "Tx Start Error")
-		return
-	}
+	if err != nil { sendError(w, 500, "Tx Start Error"); return }
 	defer tx.Rollback()
 
-	// 2. Create Order Header (Changed output method)
 	var orderID int
 	// BLUNT FIX: triggers block 'OUTPUT inserted.id', so use 'SELECT SCOPE_IDENTITY()'
 	queryOrder := `
@@ -384,11 +382,9 @@ func create_customer_order(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Add Items
 	totalMoney := 0.0
 	for _, item := range input.Items {
 		var price float64
-		// Get price
 		err = tx.QueryRowContext(ctx, "SELECT TOP 1 gia FROM gia_ban WHERE ma_sach = @p1 AND den_ngay IS NULL ORDER BY tu_ngay DESC", 
 			sql.Named("p1", item.MaSach)).Scan(&price)
 		
@@ -397,7 +393,6 @@ func create_customer_order(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Insert Detail
 		_, err = tx.ExecContext(ctx, `
 			INSERT INTO chi_tiet_don_hang (ma_don, ma_sach, gia_ban, so_luong)
 			VALUES (@p1, @p2, @p3, @p4)
@@ -415,20 +410,12 @@ func create_customer_order(w http.ResponseWriter, r *http.Request) {
 		totalMoney += price * float64(item.SoLuong)
 	}
 
-	// 4. Update Total
 	_, err = tx.ExecContext(ctx, "UPDATE don_hang SET tong_tien_thanh_toan = @p1 WHERE ma_don = @p2",
 		sql.Named("p1", totalMoney), sql.Named("p2", orderID))
 	
-	if err != nil {
-		sendError(w, 500, "Update Total Failed")
-		return
-	}
+	if err != nil { sendError(w, 500, "Update Total Failed"); return }
 
-	// 5. Commit
-	if err := tx.Commit(); err != nil {
-		sendError(w, 500, "Commit Failed")
-		return
-	}
+	if err := tx.Commit(); err != nil { sendError(w, 500, "Commit Failed"); return }
 
 	sendSuccess(w, "Order Placed", map[string]interface{}{"order_id": orderID})
 }
