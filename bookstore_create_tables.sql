@@ -1,6 +1,9 @@
 -- ======================================================
---   BOOK STORE DATABASE (SQL Server)
+--    BOOK STORE DATABASE (SQL Server) - REVISED HYBRID
 -- ======================================================
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
+GO
 
 IF DB_ID('book_store') IS NULL
     CREATE DATABASE book_store;
@@ -10,7 +13,7 @@ USE book_store;
 GO
 
 -- ======================================================
---   1. nha_xuat_ban (Publisher)
+-- 1. nha_xuat_ban (Publisher)
 -- ======================================================
 CREATE TABLE nha_xuat_ban (
     ma_nxb INT IDENTITY(1,1) PRIMARY KEY,
@@ -22,11 +25,20 @@ CREATE TABLE nha_xuat_ban (
 GO
 
 -- ======================================================
---   2. sach (Book)
+-- 2. sach (Book) - HYBRID MODEL
 -- ======================================================
 CREATE TABLE sach (
     ma_sach INT IDENTITY(1,1) PRIMARY KEY,
     ten_sach NVARCHAR(200) NOT NULL,
+    
+    -- [THE CACHE] - O(1) Read Speed
+    gia_hien_tai MONEY DEFAULT 0 CHECK (gia_hien_tai >= 0),
+    ma_gia_hien_tai INT NULL, -- Pointer to History Log
+    
+    -- [SOFT DELETE] - 0=Active, 1=Hidden
+    da_xoa BIT DEFAULT 0,
+
+    -- [ORIGINAL FIELDS]
     nam_xuat_ban INT CHECK (nam_xuat_ban BETWEEN 1900 AND YEAR(GETDATE())),
     ngay_du_kien_co_hang DATE NULL,
     trong_luong DECIMAL(10,2) CHECK (trong_luong >= 0),
@@ -49,21 +61,27 @@ CREATE TABLE sach (
 GO
 
 -- ======================================================
---   3. gia_ban (Book Price History)
+-- 3. gia_ban (Price History) - THE LOG
 -- ======================================================
 CREATE TABLE gia_ban (
     ma_gia INT IDENTITY(1,1) PRIMARY KEY,
     ma_sach INT NOT NULL,
     gia MONEY NOT NULL CHECK (gia >= 0),
-    tu_ngay DATE NOT NULL,
-    den_ngay DATE NULL,
+    ngay_ap_dung DATETIME DEFAULT GETDATE(),
     
     FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE CASCADE
 );
 GO
 
+-- 4. THE CIRCULAR LINK (Manual Wiring)
+ALTER TABLE sach
+ADD CONSTRAINT fk_sach_gia_current
+FOREIGN KEY (ma_gia_hien_tai) REFERENCES gia_ban(ma_gia)
+ON DELETE NO ACTION;
+GO
+
 -- ======================================================
---   4. the_loai (Category)
+--    4. the_loai (Category)
 -- ======================================================
 CREATE TABLE the_loai (
     ma_tl INT IDENTITY(1,1) PRIMARY KEY,
@@ -72,7 +90,7 @@ CREATE TABLE the_loai (
 GO
 
 -- ======================================================
---   5. sach_the_loai (Book-Category)
+--    5. sach_the_loai (Book-Category)
 -- ======================================================
 CREATE TABLE sach_the_loai (
     ma_sach INT NOT NULL,
@@ -85,7 +103,7 @@ CREATE TABLE sach_the_loai (
 GO
 
 -- ======================================================
---   6. tac_gia (Author)
+--    6. tac_gia (Author)
 -- ======================================================
 CREATE TABLE tac_gia (
     ma_tg INT IDENTITY(1,1) PRIMARY KEY,
@@ -96,7 +114,7 @@ CREATE TABLE tac_gia (
 GO
 
 -- ======================================================
---   7. sach_tac_gia (Book-Author)
+--    7. sach_tac_gia (Book-Author)
 -- ======================================================
 CREATE TABLE sach_tac_gia (
     ma_sach INT NOT NULL,
@@ -109,7 +127,7 @@ CREATE TABLE sach_tac_gia (
 GO
 
 -- ======================================================
---   8. nguoi_dich (Translator)
+--    8. nguoi_dich (Translator)
 -- ======================================================
 CREATE TABLE nguoi_dich (
     ma_ng_dich INT IDENTITY(1,1) PRIMARY KEY,
@@ -119,7 +137,7 @@ CREATE TABLE nguoi_dich (
 GO
 
 -- ======================================================
---   9. sach_nguoi_dich (Book-Translator)
+--    9. sach_nguoi_dich (Book-Translator)
 -- ======================================================
 CREATE TABLE sach_nguoi_dich (
     ma_sach INT NOT NULL,
@@ -132,7 +150,7 @@ CREATE TABLE sach_nguoi_dich (
 GO
 
 -- ======================================================
---   10. khach_hang (Customer - Base)
+--    10. khach_hang (Customer - Base)
 -- ======================================================
 CREATE TABLE khach_hang (
     ma_khach_hang INT IDENTITY(1,1) PRIMARY KEY,
@@ -145,7 +163,7 @@ CREATE TABLE khach_hang (
 GO
 
 -- ======================================================
---   11. thanh_vien (Member)
+--    11. thanh_vien (Member)
 -- ======================================================
 CREATE TABLE thanh_vien (
     ma_khach_hang INT PRIMARY KEY,
@@ -163,7 +181,7 @@ CREATE TABLE thanh_vien (
 GO
 
 -- ======================================================
---   12. khach (Guest)
+--    12. khach (Guest)
 -- ======================================================
 CREATE TABLE khach (
     ma_khach_hang INT PRIMARY KEY,
@@ -174,7 +192,7 @@ CREATE TABLE khach (
 GO
 
 -- ======================================================
---   13. dia_chi_cu_the (Address)
+--    13. dia_chi_cu_the (Address)
 -- ======================================================
 CREATE TABLE dia_chi_cu_the (
     ma_dia_chi INT IDENTITY(1,1) PRIMARY KEY,
@@ -189,7 +207,7 @@ CREATE TABLE dia_chi_cu_the (
 GO
 
 -- ======================================================
---   14. voucher (Voucher)
+--    14. voucher (Voucher)
 -- ======================================================
 CREATE TABLE voucher (
     ma_voucher INT IDENTITY(1,1) PRIMARY KEY,
@@ -205,7 +223,7 @@ CREATE TABLE voucher (
 GO
 
 -- ======================================================
---   15. khuyen_mai_voucher (Voucher Promotion)
+--    15. khuyen_mai_voucher (Voucher Promotion)
 -- ======================================================
 CREATE TABLE khuyen_mai_voucher (
     ma_voucher INT PRIMARY KEY,
@@ -217,7 +235,7 @@ CREATE TABLE khuyen_mai_voucher (
 GO
 
 -- ======================================================
---   16. su_dung_voucher (Voucher Usage)
+--    16. su_dung_voucher (Voucher Usage)
 -- ======================================================
 CREATE TABLE su_dung_voucher (
     ma_voucher INT NOT NULL,
@@ -231,7 +249,7 @@ CREATE TABLE su_dung_voucher (
 GO
 
 -- ======================================================
---   17. don_hang (Order)
+--    17. don_hang (Order)
 -- ======================================================
 CREATE TABLE don_hang (
     ma_don INT IDENTITY(1,1) PRIMARY KEY,
@@ -249,23 +267,28 @@ CREATE TABLE don_hang (
 GO
 
 -- ======================================================
---   18. chi_tiet_don_hang (Order Detail)
+--    18. chi_tiet_don_hang (Order Detail)
 -- ======================================================
 CREATE TABLE chi_tiet_don_hang (
     ma_don INT NOT NULL,
     ma_sach INT NOT NULL,
-    gia_ban MONEY NOT NULL CHECK (gia_ban >= 0),
+    
+    -- [UPDATED] Link to the specific Price History ID
+    ma_gia INT NOT NULL, 
+
+    gia_ban MONEY NOT NULL CHECK (gia_ban >= 0), -- Snapshot value
     so_luong INT NOT NULL CHECK (so_luong > 0),
     the_loai NVARCHAR(100),
     
     PRIMARY KEY (ma_don, ma_sach),
     FOREIGN KEY (ma_don) REFERENCES don_hang(ma_don) ON DELETE CASCADE,
-    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE NO ACTION
+    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE NO ACTION,
+    FOREIGN KEY (ma_gia) REFERENCES gia_ban(ma_gia) -- Link to History
 );
 GO
 
 -- ======================================================
---   19. thanh_toan (Payment)
+--    19. thanh_toan (Payment)
 -- ======================================================
 CREATE TABLE thanh_toan (
     ma_thanh_toan INT IDENTITY(1,1) PRIMARY KEY,
@@ -279,7 +302,7 @@ CREATE TABLE thanh_toan (
 GO
 
 -- ======================================================
---   20. kho (Inventory)
+--    20. kho (Inventory)
 -- ======================================================
 CREATE TABLE kho (
     ma_kho INT IDENTITY(1,1) PRIMARY KEY,
@@ -289,7 +312,7 @@ CREATE TABLE kho (
 GO
 
 -- ======================================================
---   21. so_luong_sach_kho (Book Inventory per Warehouse)
+--    21. so_luong_sach_kho (Book Inventory per Warehouse)
 -- ======================================================
 CREATE TABLE so_luong_sach_kho (
     ma_kho INT NOT NULL,
@@ -303,7 +326,7 @@ CREATE TABLE so_luong_sach_kho (
 GO
 
 -- ======================================================
---   22. danh_gia (Review)
+--    22. danh_gia (Review)
 -- ======================================================
 CREATE TABLE danh_gia (
     ma_dg INT IDENTITY(1,1) PRIMARY KEY,
@@ -319,14 +342,18 @@ CREATE TABLE danh_gia (
 GO
 
 -- ======================================================
---   INDEXES FOR PERFORMANCE
+--    INDEXES FOR PERFORMANCE
 -- ======================================================
 CREATE INDEX idx_sach_nxb ON sach(ma_nxb);
 CREATE INDEX idx_gia_ban_sach ON gia_ban(ma_sach);
 CREATE INDEX idx_don_hang_khach ON don_hang(ma_khach_hang);
 CREATE INDEX idx_don_hang_ngay ON don_hang(thoi_diem_dat_hang);
 CREATE INDEX idx_danh_gia_sach ON danh_gia(ma_sach);
-GO
+
+-- UNIQUE Index for Soft Delete logic (Allows same name if one is deleted)
+CREATE UNIQUE NONCLUSTERED INDEX idx_unique_active_book_name
+ON sach(ten_sach)
+WHERE da_xoa = 0; 
 
 PRINT 'Database created successfully!';
 GO
