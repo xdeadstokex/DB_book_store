@@ -2,7 +2,79 @@ USE book_store;
 GO
 
 -- ======================================================
--- PROCEDURE 1: sp_ThemSach (Add Book - Hybrid Model)
+-- PROCEDURE 1: AUTH - Register (Customer + Member)
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_DangKyThanhVien
+    @ho NVARCHAR(100),
+    @ho_ten_dem NVARCHAR(200),
+    @email NVARCHAR(200),
+    @sdt NVARCHAR(20),
+    @ten_dang_nhap NVARCHAR(100),
+    @mat_khau NVARCHAR(200), -- Hash this in Go!
+    @gioi_tinh NVARCHAR(10) = 'Khac',
+    @ngay_sinh DATE = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. Check Duplicates
+        IF EXISTS (SELECT 1 FROM thanh_vien WHERE ten_dang_nhap = @ten_dang_nhap)
+            THROW 50030, N'Tên đăng nhập đã tồn tại', 1;
+            
+        IF EXISTS (SELECT 1 FROM khach_hang WHERE email = @email)
+            THROW 50031, N'Email đã được sử dụng', 1;
+
+        -- 2. Insert Base Customer
+        INSERT INTO khach_hang (ho_ten_dem, ho, ngay_sinh, email, sdt)
+        VALUES (@ho_ten_dem, @ho, @ngay_sinh, @email, @sdt);
+
+        DECLARE @new_kh_id INT = SCOPE_IDENTITY();
+
+        -- 3. Insert Member Credentials
+        INSERT INTO thanh_vien (ma_khach_hang, ten_dang_nhap, mat_khau_ma_hoa, gioi_tinh)
+        VALUES (@new_kh_id, @ten_dang_nhap, @mat_khau, @gioi_tinh);
+
+        COMMIT TRANSACTION;
+        
+        -- Return the new ID
+        SELECT @new_kh_id AS ma_khach_hang;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- PROCEDURE 2: AUTH - Login
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_DangNhap
+    @ten_dang_nhap NVARCHAR(100),
+    @mat_khau NVARCHAR(200)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    DECLARE @id INT;
+    SELECT @id = ma_khach_hang 
+    FROM thanh_vien 
+    WHERE ten_dang_nhap = @ten_dang_nhap AND mat_khau_ma_hoa = @mat_khau;
+
+    IF @id IS NULL THROW 50035, N'Sai tên đăng nhập hoặc mật khẩu', 1;
+
+    -- Return Basic Info
+    SELECT tv.ma_khach_hang, tv.ten_dang_nhap, kh.ho + ' ' + kh.ho_ten_dem as ho_ten
+    FROM thanh_vien tv
+    JOIN khach_hang kh ON tv.ma_khach_hang = kh.ma_khach_hang
+    WHERE tv.ma_khach_hang = @id;
+END;
+GO
+
+-- ======================================================
+-- PROC 3: sp_ThemSach (CLEAN VERSION)
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_ThemSach
     @ten_sach NVARCHAR(200),
@@ -14,7 +86,8 @@ CREATE OR ALTER PROCEDURE sp_ThemSach
     @do_tuoi INT = NULL,
     @hinh_thuc NVARCHAR(50) = NULL,
     @mo_ta NVARCHAR(MAX) = NULL,
-    @gia_ban MONEY, -- Price is required for new books
+    @ten_nguoi_dich NVARCHAR(200) = NULL,
+    @gia_ban MONEY, 
     @ma_sach_moi INT OUTPUT
 AS
 BEGIN
@@ -22,60 +95,47 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
         
-        -- [VALIDATIONS] ---------------------------------------------
-        IF LTRIM(RTRIM(@ten_sach)) = '' OR @ten_sach IS NULL THROW 50001, N'Tên sách không được trống', 1;
-        IF @nam_xuat_ban < 1900 OR @nam_xuat_ban > YEAR(GETDATE()) THROW 50002, N'Năm xuất bản không hợp lệ', 1;
-        IF NOT EXISTS (SELECT 1 FROM nha_xuat_ban WHERE ma_nxb = @ma_nxb) THROW 50003, N'Mã nhà xuất bản không tồn tại', 1;
-        IF @so_trang <= 0 OR @so_trang > 10000 THROW 50004, N'Số trang phải từ 1-10,000', 1;
-        IF @gia_ban < 0 OR @gia_ban < 1000 THROW 50007, N'Giá bán phải >= 1,000 VNĐ', 1;
+        -- [LOGIC ONLY - Validations handled by Triggers/Constraints]
         
-        -- Check duplicate (Only check Active books)
-        IF EXISTS (
-            SELECT 1 FROM sach 
-            WHERE ten_sach = @ten_sach 
-              AND nam_xuat_ban = @nam_xuat_ban 
-              AND ma_nxb = @ma_nxb
-              AND da_xoa = 0
-        ) THROW 50008, N'Sách này đã tồn tại', 1;
-        
-        -- [LOGIC] ---------------------------------------------------
-        
-        -- 1. Insert Book (Pointer is NULL initially)
+        -- 1. Insert Book
         INSERT INTO sach (
             ten_sach, nam_xuat_ban, ma_nxb, so_trang, ngon_ngu,
-            trong_luong, do_tuoi, hinh_thuc, mo_ta, so_sao_trung_binh,
-            gia_hien_tai, ma_gia_hien_tai, da_xoa
+            trong_luong, do_tuoi, hinh_thuc, mo_ta, ten_nguoi_dich,
+            gia_hien_tai, ma_gia_hien_tai, 
+            so_sao_trung_binh, tong_so_danh_gia, ma_rating_hien_tai,
+            da_xoa
         )
         VALUES (
             @ten_sach, @nam_xuat_ban, @ma_nxb, @so_trang, @ngon_ngu,
-            @trong_luong, @do_tuoi, @hinh_thuc, @mo_ta, 0.00,
-            @gia_ban, NULL, 0
+            @trong_luong, @do_tuoi, @hinh_thuc, @mo_ta, @ten_nguoi_dich,
+            @gia_ban, NULL, 
+            0, 0, NULL,     
+            0
         );
         
         SET @ma_sach_moi = SCOPE_IDENTITY();
         
-        -- 2. Insert Price History
-        INSERT INTO gia_ban (ma_sach, gia)
-        VALUES (@ma_sach_moi, @gia_ban);
-        
-        DECLARE @ma_gia_moi INT = SCOPE_IDENTITY();
+        -- 2. Create Initial Price History (Trigger checks @gia_ban here)
+        INSERT INTO gia_ban (ma_sach, gia) VALUES (@ma_sach_moi, @gia_ban);
+        DECLARE @pid INT = SCOPE_IDENTITY();
 
-        -- 3. Update Book to Point to Price
+        -- 3. Create Initial Rating History
+        INSERT INTO tong_hop_danh_gia (ma_sach, diem_trung_binh, tong_luot_danh_gia) 
+        VALUES (@ma_sach_moi, 0, 0);
+        DECLARE @rid INT = SCOPE_IDENTITY();
+
+        -- 4. Wire up Pointers
         UPDATE sach 
-        SET ma_gia_hien_tai = @ma_gia_moi 
+        SET ma_gia_hien_tai = @pid, ma_rating_hien_tai = @rid
         WHERE ma_sach = @ma_sach_moi;
         
-        -- 4. Add to default warehouse (Initialize inventory at 0)
+        -- 5. Init Inventory
         DECLARE @ma_kho_mac_dinh INT = (SELECT TOP 1 ma_kho FROM kho ORDER BY ma_kho);
         IF @ma_kho_mac_dinh IS NOT NULL
-        BEGIN
             INSERT INTO so_luong_sach_kho (ma_kho, ma_sach, so_luong_ton)
             VALUES (@ma_kho_mac_dinh, @ma_sach_moi, 0);
-        END
         
         COMMIT TRANSACTION;
-        PRINT N'Thêm sách thành công! Mã: ' + CAST(@ma_sach_moi AS NVARCHAR(10));
-        
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK;
@@ -85,7 +145,7 @@ END;
 GO
 
 -- ======================================================
--- PROCEDURE 2: sp_SuaSach (Update Info - NO PRICE)
+-- PROC 4: sp_SuaSach (CLEAN VERSION)
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_SuaSach
     @ma_sach INT,
@@ -97,22 +157,13 @@ CREATE OR ALTER PROCEDURE sp_SuaSach
     @trong_luong DECIMAL(10,2) = NULL,
     @do_tuoi INT = NULL,
     @hinh_thuc NVARCHAR(50) = NULL,
-    @mo_ta NVARCHAR(MAX) = NULL
+    @mo_ta NVARCHAR(MAX) = NULL,
+    @ten_nguoi_dich NVARCHAR(200) = NULL
 AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- Check existence
-        IF NOT EXISTS (SELECT 1 FROM sach WHERE ma_sach = @ma_sach AND da_xoa = 0)
-            THROW 50010, N'Không tìm thấy sách hoặc sách đã bị xóa', 1;
-        
-        -- Simple Validations
-        IF @nam_xuat_ban IS NOT NULL AND (@nam_xuat_ban < 1900 OR @nam_xuat_ban > YEAR(GETDATE()))
-            THROW 50012, N'Năm xuất bản không hợp lệ', 1;
-        
-        -- Update Info (Ignores Price)
+        -- Triggers will validate the data update automatically
         UPDATE sach
         SET 
             ten_sach = ISNULL(@ten_sach, ten_sach),
@@ -123,22 +174,18 @@ BEGIN
             trong_luong = ISNULL(@trong_luong, trong_luong),
             do_tuoi = ISNULL(@do_tuoi, do_tuoi),
             hinh_thuc = ISNULL(@hinh_thuc, hinh_thuc),
-            mo_ta = ISNULL(@mo_ta, mo_ta)
+            mo_ta = ISNULL(@mo_ta, mo_ta),
+            ten_nguoi_dich = ISNULL(@ten_nguoi_dich, ten_nguoi_dich)
         WHERE ma_sach = @ma_sach;
-        
-        COMMIT TRANSACTION;
-        PRINT N'Cập nhật thông tin sách thành công!';
-        
     END TRY
     BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK;
         THROW;
     END CATCH
 END;
 GO
 
 -- ======================================================
--- PROCEDURE 3: sp_CapNhatGia (New - Update Price Logic)
+-- PROC 5: sp_CapNhatGia (CLEAN VERSION)
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_CapNhatGia
     @ma_sach INT,
@@ -149,9 +196,7 @@ BEGIN
     BEGIN TRY
         BEGIN TRANSACTION;
 
-        IF @gia_moi < 0 OR @gia_moi < 1000 THROW 50007, N'Giá bán phải >= 1,000 VNĐ', 1;
-
-        -- 1. Add to History
+        -- 1. Add to History (Trigger checks @gia_moi here)
         INSERT INTO gia_ban (ma_sach, gia) VALUES (@ma_sach, @gia_moi);
         DECLARE @new_price_id INT = SCOPE_IDENTITY();
 
@@ -161,7 +206,6 @@ BEGIN
         WHERE ma_sach = @ma_sach;
 
         COMMIT TRANSACTION;
-        PRINT N'Cập nhật giá thành công!';
     END TRY
     BEGIN CATCH
         IF @@TRANCOUNT > 0 ROLLBACK;
@@ -171,7 +215,58 @@ END;
 GO
 
 -- ======================================================
--- PROCEDURE 4: sp_XoaSach (Soft Delete)
+-- PROC 6: sp_ThemDanhGia (CLEAN VERSION)
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_ThemDanhGia
+    @ma_sach INT,
+    @ma_khach_hang INT,
+    @so_sao INT,
+    @noi_dung NVARCHAR(MAX)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+        
+        -- 1. Insert Raw Review (Trigger checks @so_sao here)
+        INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung, ngay_danh_gia)
+        VALUES (@ma_sach, @ma_khach_hang, @so_sao, @noi_dung, GETDATE());
+
+        -- 2. Calculate Math
+        DECLARE @new_avg DECIMAL(3,2);
+        DECLARE @new_count INT;
+
+        SELECT 
+            @new_avg = CAST(AVG(CAST(so_sao AS DECIMAL(10,2))) AS DECIMAL(3,2)),
+            @new_count = COUNT(*)
+        FROM danh_gia 
+        WHERE ma_sach = @ma_sach;
+
+        -- 3. Insert Snapshot & Update Cache
+        INSERT INTO tong_hop_danh_gia (ma_sach, diem_trung_binh, tong_luot_danh_gia)
+        VALUES (@ma_sach, @new_avg, @new_count);
+        DECLARE @rid INT = SCOPE_IDENTITY();
+
+        UPDATE sach 
+        SET so_sao_trung_binh = @new_avg, 
+            tong_so_danh_gia = @new_count,
+            ma_rating_hien_tai = @rid
+        WHERE ma_sach = @ma_sach;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+PRINT N'Clean Procedures Updated Successfully!';
+GO
+
+-- ======================================================
+-- PROCEDURE 7: sp_XoaSach (Soft Delete)
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_XoaSach
     @ma_sach INT
@@ -179,11 +274,7 @@ AS
 BEGIN
     SET NOCOUNT ON;
     BEGIN TRY
-        -- We just hide it. We don't care if it was ordered.
-        -- History is preserved.
         UPDATE sach SET da_xoa = 1 WHERE ma_sach = @ma_sach;
-        
-        PRINT N'Sách đã được chuyển vào thùng rác (Soft Delete).';
     END TRY
     BEGIN CATCH
         THROW;
@@ -192,7 +283,8 @@ END;
 GO
 
 -- ======================================================
--- PROCEDURE 5: Search Books (Fixed Joins)
+-- PROCEDURE 8: Search Books with Voucher
+-- FIXED for V4 Schema (No 'khuyen_mai_voucher' table)
 -- ======================================================
 CREATE OR ALTER PROCEDURE TimSachCoMoTaGanGiong_VaDangCoVoucher
     @decription NVARCHAR(100)
@@ -211,7 +303,7 @@ BEGIN
         END AS DoLienQuan
     INTO #SachLienQuan
     FROM sach AS S
-    WHERE S.da_xoa = 0 -- IMPORTANT: Soft delete check
+    WHERE S.da_xoa = 0 
       AND CHARINDEX(@decription, S.mo_ta) > 0
     ORDER BY DoLienQuan DESC;
 
@@ -224,13 +316,14 @@ BEGIN
     FROM #SachLienQuan AS SLQ
     JOIN nha_xuat_ban AS NXB ON SLQ.ma_nxb = NXB.ma_nxb
     INNER JOIN (
-        -- Fixed: Use 'so_luong_sach_kho', not 'kho'
         SELECT ma_sach, SUM(so_luong_ton) AS TongTon
         FROM so_luong_sach_kho 
         GROUP BY ma_sach
         HAVING SUM(so_luong_ton) > 0
     ) AS KHO_TON ON SLQ.ma_sach = KHO_TON.ma_sach
-    LEFT JOIN voucher AS V ON NXB.ma_nxb = V.ma_nxb
+    -- Fix: Vouchers now link to NXB directly (or are null for global)
+    LEFT JOIN voucher AS V 
+        ON (V.ma_nxb = NXB.ma_nxb OR V.ma_nxb IS NULL)
     WHERE 
         V.ma_voucher IS NOT NULL
         AND V.ket_thuc > GETDATE()
@@ -246,7 +339,7 @@ END;
 GO
 
 -- ======================================================
--- PROCEDURE 6: Get Reviews
+-- PROCEDURE 9: Get Reviews
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_LayDanhGiaSach_TheoSao
     @MaSach INT,
@@ -270,5 +363,5 @@ BEGIN
 END;
 GO
 
-PRINT N'All Procedures updated successfully!';
+PRINT N'All Procedures (V4) updated successfully!';
 GO
