@@ -4,15 +4,13 @@
 - **bookstore_drop.sql**: Reset the database, dropping all tables and data.
 - **bookstore_create_tables.sql**: Set up the database and populate it with sample data.
 - **bookstore_functions.sql**: Set up all normal func.
-- **bookstore_functions_cursor.sql**: Set up cursor func.
 - **bookstore_procedures.sql**: Set up all trigger.
 - **bookstore_triggers.sql**: Set up all trigger.
 - **bookstore_insert_data.sql**: Insert sample data for testing
 
 ## FILE RUNNING ORDER:
-<p style="margin-left: 40px;">
-  <img src="resource/running_order.png">
-</p>
+
+**the same as overview order**
 
 ## DB OVERVIEW:
 <p style="margin-left: 40px;">
@@ -64,30 +62,37 @@
     * The book vanishes from the main list.
     * Old orders still link to it safely.
     * You can still fetch it via ID, but `da_xoa` will be `true`.
-
-4.  **IDS:** All ID fields (`ma_sach`, `ma_nxb`, `ma_gia_hien_tai`) are grouped at the top of the JSON object.
-
 ---
 
 ### OVERVIEW
 ```txt
 GET  /get_all_books                          OK
 GET  /get_book_by_id?id={id}                 OK
-GET  /get_nxb_by_id?id={id}                  OK  (New)
-GET  /get_price_by_id?id={id}                OK  (New)
+GET  /get_books_by_author?id={id}            OK (New)
+GET  /get_books_by_category?id={id}          OK (New)
+
+GET  /get_nxb_by_id?id={id}                  OK
+GET  /get_price_by_id?id={id}                OK
 
 POST /add_new_book                           OK
-POST /update_book_info?id={id}               OK  (No longer updates price)
-POST /change_book_price?id={id}              OK  (New - Handles history log)
-POST /delete_book?id={id}                    OK  (Renamed - Soft delete)
+POST /update_book_info?id={id}               OK (Meta only, no price)
+POST /change_book_price?id={id}              OK (Logs history)
+POST /delete_book?id={id}                    OK (Soft delete)
 
-POST /create_customer_order                  OK  (Fixed - Locks price history)
+POST /register_member                        OK (New - Auth)
+POST /login_member                           OK (New - Returns Token)
+
+POST /add_rating                             OK (New - Requires Token)
+GET  /get_ratings_by_book?id={id}            OK (New)
+GET  /get_rating_by_id?id={id}               OK (New)
+
+POST /create_customer_order                  OK (Transactional)
 ```
 
 ### DETAILS
 ```txt
 ================================================================================
-1. READ APIS (GET)
+1. READ APIS (BOOKS)
 ================================================================================
 /////////////////////
 [GET] /get_all_books
@@ -96,50 +101,49 @@ Logic: Returns summary of ACTIVE books only (da_xoa = 0).
 Response:
 [
   {
-    "ma_sach": 101,
-    "ten_sach": "Pro Go Coding",
-    "nam_xuat_ban": 2024,
-    "so_trang": 300,
+    "ma_sach": 1,
+    "ten_sach": "Clean Code",
+    "nam_xuat_ban": 2008,
+    "so_trang": 464,
     "gia_hien_tai": 150000
   },
   ...
 ]
 
-
-//////////////////////////////
-[GET] /get_book_by_id?id=101
-//////////////////////////////
-Logic: Returns FULL specs for editing/details. Includes total inventory count. (get id from get_all_books response)
+////////////////////////////////
+[GET] /get_book_by_id?id=1
+////////////////////////////////
+Logic: Returns FULL specs. Joins with Authors, Categories, and NXB.
 Response:
 {
-  "ma_sach": 101,          // <-- IDs at top
-  "ma_nxb": 5,
-  "ma_gia_hien_tai": 505,
-  
-  "ten_sach": "Pro Go Coding",
+  "ma_sach": 1,
+  "ten_sach": "Clean Code",
   "gia_hien_tai": 150000,
-  "ton_kho": 42,           // Calculated from all warehouses
-  "da_xoa": false,
-
-  "nam_xuat_ban": 2024,
-  "so_trang": 300,
-  "ngon_ngu": "Tiếng Việt",
-  "trong_luong": 500.5,
-  "do_tuoi": 16,
-  "hinh_thuc": "Bìa Mềm",
-  "kich_thuoc_bao_bi": "20x30cm",
-  "nha_cung_cap": "Alpha Books",
   "so_sao_trung_binh": 4.5,
-  "ngay_du_kien_co_hang": "2024-01-01",
-  "ngay_du_kien_phat_hanh": "2024-01-05",
-  "mo_ta": "Description text..."
+  "ten_nguoi_dich": "Nguyen Van A",
+  "mo_ta": "Description...",
+  "hinh_thuc": "Bìa Mềm",
+  "so_trang": 464,
+  "nam_xuat_ban": 2008,
+  "ngay_phat_hanh": "2008-08-01",
+  "ten_nxb": "NXB Tre",
+  "danh_sach_tac_gia": "Robert C. Martin",
+  "danh_sach_the_loai": "IT, Education"
 }
 
+/////////////////////////////////////
+[GET] /get_books_by_author?id=10
+[GET] /get_books_by_category?id=5
+/////////////////////////////////////
+Logic: Same output format as /get_all_books, filtered by relation.
 
+================================================================================
+2. UTILITY APIS (READ)
+================================================================================
 //////////////////////////
 [GET] /get_nxb_by_id?id=5
 //////////////////////////
-Logic: Helper to get Publisher name from ID. (get id from get_book_by_id response)
+Logic: Helper to get Publisher details.
 Response:
 {
   "ma_nxb": 5,
@@ -149,26 +153,58 @@ Response:
   "sdt": "09090909"
 }
 
-
 //////////////////////////////
 [GET] /get_price_by_id?id=505
 //////////////////////////////
-Logic: Helper to view historical price record. (get id from get_book_by_id response)
+Logic: Helper to view specific historical price record.
 Response:
 {
   "ma_gia": 505,
-  "ma_sach": 101,
+  "ma_sach": 1,
   "gia": 150000,
   "ngay_ap_dung": "2024-01-01 12:00:00"
 }
 
 ================================================================================
-2. WRITE APIS (POST)
+3. AUTH & USER APIS
+================================================================================
+//////////////////////
+[POST] /register_member
+//////////////////////
+Logic: Creates user. Checks for duplicate Username/Email.
+Input:
+{
+  "ho": "Nguyen",
+  "ho_ten_dem": "Van A",
+  "email": "a@test.com",
+  "sdt": "0909123456",
+  "ten_dang_nhap": "user1",
+  "mat_khau": "123456",
+  "gioi_tinh": "Nam",
+  "ngay_sinh": "1999-01-01"
+}
+
+//////////////////////
+[POST] /login_member
+//////////////////////
+Logic: Verifies Creds. Returns Signed Bearer Token.
+Input:
+{
+  "ten_dang_nhap": "user1",
+  "mat_khau": "123456"
+}
+Response:
+{
+  "token": "MTA:17384.signature..."
+}
+
+================================================================================
+4. WRITE APIS (BOOKS)
 ================================================================================
 /////////////////////
 [POST] /add_new_book
 /////////////////////
-Logic: Creates Book + First Price Entry + Inventory(0).
+Logic: Creates Book + Price + Inventory(0).
 Input:
 {
   "ten_sach": "New Book",
@@ -180,71 +216,72 @@ Input:
   "do_tuoi": 12,
   "hinh_thuc": "Bìa Cứng",
   "mo_ta": "Desc...",
-  "gia_ban": 50000     // <--- REQUIRED
+  "ten_nguoi_dich": "Translator Name",
+  "gia_ban": 50000      // <-- REQUIRED
 }
 
-
 ////////////////////////////////
-[POST] /update_book_info?id=101
+[POST] /update_book_info?id=1
 ////////////////////////////////
-Logic: Updates metadata ONLY. You CANNOT update price here.
+Logic: Updates metadata ONLY.
 Input: (Send only fields to change)
 {
   "ten_sach": "New Name",
-  "so_trang": 120
+  "ten_nguoi_dich": "New Translator"
 }
 
-
 /////////////////////////////////
-[POST] /change_book_price?id=101
+[POST] /change_book_price?id=1
 /////////////////////////////////
-Logic: Updates Price + Logs History + Updates Cache.
+Logic: Updates Price + Logs History.
 Input:
 {
   "gia_moi": 60000
 }
 
-
 ///////////////////////////
-[POST] /delete_book?id=101
+[POST] /delete_book?id=1
 ///////////////////////////
-Logic: Soft Delete. Sets 'da_xoa' = 1.
+Logic: Soft Delete.
 Input: {} (Empty JSON)
 
 ================================================================================
-3. TRANSACTION APIS (POST)
+5. RATINGS APIS
+================================================================================
+/////////////////////////
+[POST] /add_rating
+/////////////////////////
+Logic: Adds review. REQUIRES HEADER: "Authorization: Bearer <token>"
+Input:
+{
+  "ma_sach": 1,
+  "customer_id": 0, // <--- Ignored, ID comes from Token
+  "so_sao": 5,
+  "noi_dung": "Good book"
+}
+
+////////////////////////////////
+[GET] /get_ratings_by_book?id=1
+////////////////////////////////
+Logic: Lists all reviews for a book.
+Response:
+[
+  { "ma_dg": 10, "ten_nguoi_dung": "A", "so_sao": 5, "noi_dung": "...", "ngay_danh_gia": "..." }
+]
+
+================================================================================
+6. TRANSACTION APIS
 ================================================================================
 //////////////////////////////
 [POST] /create_customer_order
 //////////////////////////////
-Logic:
-1. Creates Order Header.
-2. Locks the CURRENT price ID (ma_gia_hien_tai) into the Order Detail.
-3. Updates Total.
-Note: Will fail (409) if out of stock.
-
+Logic: Locks price snapshot. Fails if out of stock.
 Input:
 {
   "customer_id": 10,
   "voucher_id": null,
   "items": [
-    { "ma_sach": 101, "so_luong": 1 },
-    { "ma_sach": 102, "so_luong": 2 }
+    { "ma_sach": 1, "so_luong": 1 }
   ]
 }
-
-Response:
-{
-  "message": "Order Placed",
-  "data": { "order_id": 5001 }
-}
-
-================================================================================
-ERROR CODES
-================================================================================
-200: OK
-400: Bad Request (Missing ID, Invalid JSON, Price < 0)
-404: Not Found (Book ID invalid)
-409: Conflict (Out of Stock, or attempting to hard-delete ordered book)
-500: Server Error (SQL Exploded)
 ```
