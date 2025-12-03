@@ -181,22 +181,44 @@ Response: { "ma_gia": 10, "ma_sach": 1, "gia": 50000, "ngay_ap_dung": "2025-01-0
 Logic: Inserts Book + Price + Inventory.
 Input:
 {
-  "ten_sach": "New Book", "nam_xuat_ban": 2025, "ma_nxb": 1, "so_trang": 200,
-  "ngon_ngu": "VN", "trong_luong": 300.5, "do_tuoi": 16, "hinh_thuc": "Hard",
-  "mo_ta": "...", "gia_ban": 100000, "ten_nguoi_dich": "Mr. A"
+  "ten_sach": "New Book Title",
+  "nam_xuat_ban": 2024,
+  "ma_nxb": 1,
+  "so_trang": 300,
+  "ngon_ngu": "Tiếng Việt",
+  "trong_luong": 250.5,
+  "do_tuoi": 16,
+  "hinh_thuc": "Bìa Mềm",
+  "mo_ta": "Full description...",
+  "ten_nguoi_dich": "Nguyen Van A",
+  "gia_ban": 150000
 }
-
 ////////////////////////////////
 [POST] /update_book_info?id={id}
 ////////////////////////////////
 Logic: Updates Book metadata.
-Input: { "ten_sach": "New Name", "nam_xuat_ban": 2024, ... } (Send all fields)
+Input:
+{
+  "ten_sach": "Updated Title",
+  "nam_xuat_ban": 2024,
+  "ma_nxb": 1,
+  "so_trang": 300,
+  "ngon_ngu": "Tiếng Việt",
+  "trong_luong": 250.5,
+  "do_tuoi": 16,
+  "hinh_thuc": "Bìa Mềm",
+  "mo_ta": "Updated description...",
+  "ten_nguoi_dich": "Nguyen Van B"
+}
 
 ////////////////////////////////
 [POST] /change_book_price?id={id}
 ////////////////////////////////
 Logic: Updates price table.
-Input: { "gia_moi": 120000 }
+Input:
+{
+  "gia_moi": 180000
+}
 
 ////////////////////////////////
 [POST] /delete_book?id={id}
@@ -217,13 +239,22 @@ Response:
 [POST] /admin/restock_book
 ///////////////////////////
 Logic: Adds stock to warehouse.
-Input: { "ma_sach": 1, "ma_kho": 1, "so_luong_them": 50 }
+Input:
+{
+  "ma_sach": 1,
+  "ma_kho": 1,
+  "so_luong_them": 50
+}
 
 ///////////////////////////
 [POST] /update_order_status
 ///////////////////////////
 Logic: Sets order to Delivered.
-Input: { "ma_don": 99, "status": "Delivered" }
+Input:
+{
+  "ma_don": 99,
+  "status": "Delivered"
+}
 
 ================================================================================
 3. AUTH & USER DATA
@@ -234,15 +265,25 @@ Input: { "ma_don": 99, "status": "Delivered" }
 Logic: Register new user.
 Input:
 {
-  "ho": "Nguyen", "ho_ten_dem": "Van", "email": "a@a.com", "sdt": "0909...",
-  "ten_dang_nhap": "user1", "mat_khau": "pass", "gioi_tinh": "Nam", "ngay_sinh": "2000-01-01"
+  "ho": "Tran",
+  "ho_ten_dem": "Van",
+  "email": "user@email.com",
+  "sdt": "0987654321",
+  "ten_dang_nhap": "myuser1",
+  "mat_khau": "mypassword",
+  "gioi_tinh": "Nam",
+  "ngay_sinh": "1995-05-20"
 }
 
 ////////////////////
 [POST] /login_member
 ////////////////////
 Logic: Returns Bearer Token.
-Input: { "ten_dang_nhap": "user1", "mat_khau": "pass" }
+Input:
+{
+  "ten_dang_nhap": "myuser1",
+  "mat_khau": "mypassword"
+}
 Response: { "token": "..." }
 
 /////////////////////
@@ -254,7 +295,13 @@ Logic: Returns profile of logged-in user. Header Token required.
 [POST] /add_address
 ////////////////////
 Logic: Adds new shipping address. Header Token required.
-Input: { "thanh_pho": "HCM", "quan_huyen": "Q1", "phuong_xa": "Dakao", "dia_chi_nha": "123 Street" }
+Input:
+{
+  "thanh_pho": "Ho Chi Minh",
+  "quan_huyen": "Quan 1",
+  "phuong_xa": "Ben Nghe",
+  "dia_chi_nha": "123 Duong Le Loi"
+}
 
 ///////////////////////
 [GET] /get_my_addresses
@@ -268,19 +315,33 @@ Logic: List all addresses for logged-in user. Header Token required.
 [POST] /add_to_cart
 ////////////////////
 Logic: Add item.
-Input: { "ma_khach_hang": 1, "ma_sach": 10, "so_luong": 1 }
+Input:
+{
+  "customer_id": 10,
+  "ma_sach": 5,
+  "so_luong": 1
+}
 
 /////////////////////////
 [POST] /remove_from_cart
 /////////////////////////
 Logic: Remove item.
-Input: { "ma_khach_hang": 1, "ma_sach": 10 }
+Input:
+{
+  "customer_id": 10,
+  "ma_sach": 5
+}
 
 ////////////////////////
 [POST] /update_cart_qty
 ////////////////////////
 Logic: Change quantity.
-Input: { "ma_khach_hang": 1, "ma_sach": 10, "so_luong": 5 }
+Input:
+{
+  "customer_id": 10,
+  "ma_sach": 5,
+  "so_luong": 3
+}
 
 ///////////////////////////////////
 [GET] /get_current_cart?id={user_id}
@@ -297,13 +358,20 @@ Response:
 [POST] /set_shipping_address
 /////////////////////////////
 Logic: Link address to cart. Header Token required.
-Input: { "ma_dia_chi": 5 }
+Input:
+{
+  "ma_dia_chi": 101
+}
 
 ///////////////////////////
 [POST] /set_payment_method
 ///////////////////////////
 Logic: Set 'Visa' or 'Shipper'.
-Input: { "ma_khach_hang": 1, "hinh_thuc": "Visa" }
+Input:
+{
+  "customer_id": 10,
+  "hinh_thuc": "Visa" // or "Shipper"
+}
 
 //////////////////////////////
 [GET] /get_last_payment_method
@@ -314,7 +382,11 @@ Logic: Get last used method. Header Token required.
 [POST] /apply_voucher
 //////////////////////
 Logic: Apply code.
-Input: { "ma_khach_hang": 1, "ma_code": "SALE" }
+Input:
+{
+  "customer_id": 10,
+  "voucher_code": "SUMMER2025"
+}
 
 ///////////////////////
 [GET] /get_my_vouchers
@@ -330,13 +402,19 @@ Logic: Auto-find best code. Header Token required.
 [POST] /checkout
 /////////////////
 Logic: Validates Address & Payment exist. Checks Stock. Commits order.
-Input: { "cart_id": 100 }
+Input:
+{
+  "cart_id": 555
+}
 
 /////////////////////
 [POST] /cancel_order
 /////////////////////
 Logic: Cancel if not shipped. Header Token required.
-Input: { "ma_don": 100 }
+Input:
+{
+  "ma_don": 555
+}
 
 ================================================================================
 5. HISTORY & RATINGS
@@ -355,7 +433,12 @@ Logic: List items in past order.
 [POST] /add_rating
 /////////////////
 Logic: Review a book. Header Token required.
-Input: { "ma_sach": 1, "so_sao": 5, "noi_dung": "Great" }
+Input:
+{
+  "ma_sach": 5,
+  "so_sao": 5,
+  "noi_dung": "Sach rat hay!",
+}
 
 ////////////////////////////////
 [GET] /get_ratings_by_book?id={id}
