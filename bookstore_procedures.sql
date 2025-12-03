@@ -215,7 +215,8 @@ END;
 GO
 
 -- ======================================================
--- PROC 6: sp_ThemDanhGia (CLEAN VERSION)
+-- 2. PROCEDURE: sp_ThemDanhGia (OPTIMIZED)
+-- Now it is just a dumb wrapper. The Triggers do ALL the work.
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_ThemDanhGia
     @ma_sach INT,
@@ -225,44 +226,13 @@ CREATE OR ALTER PROCEDURE sp_ThemDanhGia
 AS
 BEGIN
     SET NOCOUNT ON;
-    BEGIN TRY
-        BEGIN TRANSACTION;
-        
-        -- 1. Insert Raw Review (Trigger checks @so_sao here)
-        INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung, ngay_danh_gia)
-        VALUES (@ma_sach, @ma_khach_hang, @so_sao, @noi_dung, GETDATE());
-
-        -- 2. Calculate Math
-        DECLARE @new_avg DECIMAL(3,2);
-        DECLARE @new_count INT;
-
-        SELECT 
-            @new_avg = CAST(AVG(CAST(so_sao AS DECIMAL(10,2))) AS DECIMAL(3,2)),
-            @new_count = COUNT(*)
-        FROM danh_gia 
-        WHERE ma_sach = @ma_sach;
-
-        -- 3. Insert Snapshot & Update Cache
-        INSERT INTO tong_hop_danh_gia (ma_sach, diem_trung_binh, tong_luot_danh_gia)
-        VALUES (@ma_sach, @new_avg, @new_count);
-        DECLARE @rid INT = SCOPE_IDENTITY();
-
-        UPDATE sach 
-        SET so_sao_trung_binh = @new_avg, 
-            tong_so_danh_gia = @new_count,
-            ma_rating_hien_tai = @rid
-        WHERE ma_sach = @ma_sach;
-
-        COMMIT TRANSACTION;
-    END TRY
-    BEGIN CATCH
-        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
-        THROW;
-    END CATCH
+    -- No validations here. 
+    -- trg_KiemTraHopLe_DanhGia handles rules (1-5 stars, bought check).
+    -- trg_TuDongTinhToan_Rating handles math.
+    
+    INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung, ngay_danh_gia)
+    VALUES (@ma_sach, @ma_khach_hang, @so_sao, @noi_dung, GETDATE());
 END;
-GO
-
-PRINT N'Clean Procedures Updated Successfully!';
 GO
 
 -- ======================================================
@@ -363,5 +333,490 @@ BEGIN
 END;
 GO
 
-PRINT N'All Procedures (V4) updated successfully!';
+-- ======================================================
+-- 10. PROCEDURE: Add to Cart (Auto-create logic)
+-- Overwrites any previous similar logic.
+-- Logic:
+--   1. Find active cart (Ordered=0, Cancelled=0).
+--   2. If none, create new.
+--   3. Get current book price.
+--   4. Upsert item (Update qty if exists, else Insert).
+--   5. Recalculate Cart Total.
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_ThemSachVaoGioHang
+    @ma_khach_hang INT,
+    @ma_sach INT,
+    @so_luong INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @ma_don INT;
+        DECLARE @gia_hien_tai MONEY;
+        DECLARE @ma_gia_hien_tai INT;
+
+        -- A. Validate Book & Get Price Snapshot
+        SELECT @gia_hien_tai = gia_hien_tai, @ma_gia_hien_tai = ma_gia_hien_tai
+        FROM sach WHERE ma_sach = @ma_sach AND da_xoa = 0;
+
+        IF @gia_hien_tai IS NULL 
+            THROW 50001, N'Sách không tồn tại hoặc đã bị xóa.', 1;
+
+        -- B. Find Active Basket
+        SELECT TOP 1 @ma_don = ma_don 
+        FROM don_hang 
+        WHERE ma_khach_hang = @ma_khach_hang 
+          AND da_dat_hang = 0 
+          AND da_huy = 0;
+
+        -- C. Create New Basket if needed
+        IF @ma_don IS NULL
+        BEGIN
+            INSERT INTO don_hang (ma_khach_hang, da_dat_hang, da_giao_hang, da_huy, tong_tien_thanh_toan)
+            VALUES (@ma_khach_hang, 0, 0, 0, 0);
+            
+            SET @ma_don = SCOPE_IDENTITY();
+        END
+
+        -- D. Upsert Item (Add to Cart)
+        IF EXISTS (SELECT 1 FROM chi_tiet_don_hang WHERE ma_don = @ma_don AND ma_sach = @ma_sach)
+        BEGIN
+            -- Item exists: Update Quantity & Refresh Price to current
+            UPDATE chi_tiet_don_hang
+            SET so_luong = so_luong + @so_luong,
+                gia_ban = @gia_hien_tai,      -- Always refresh price in cart
+                ma_gia = @ma_gia_hien_tai
+            WHERE ma_don = @ma_don AND ma_sach = @ma_sach;
+        END
+        ELSE
+        BEGIN
+            -- Item new: Insert
+            INSERT INTO chi_tiet_don_hang (ma_don, ma_sach, ma_gia, gia_ban, so_luong)
+            VALUES (@ma_don, @ma_sach, @ma_gia_hien_tai, @gia_hien_tai, @so_luong);
+        END
+
+        -- E. Recalculate Cart Total
+        DECLARE @TongTien MONEY;
+        SELECT @TongTien = SUM(so_luong * gia_ban) 
+        FROM chi_tiet_don_hang 
+        WHERE ma_don = @ma_don;
+
+        UPDATE don_hang SET tong_tien_thanh_toan = ISNULL(@TongTien, 0) WHERE ma_don = @ma_don;
+
+        COMMIT TRANSACTION;
+        
+        -- Return Cart ID
+        SELECT @ma_don AS ma_gio_hang;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- 1. PROCEDURE: Remove Item from Cart
+-- Logic: Finds active cart -> Deletes Item -> Recalculates Total
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_XoaKhoiGioHang
+    @ma_khach_hang INT,
+    @ma_sach INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        DECLARE @ma_don INT;
+
+        -- 1. Find Active Basket
+        SELECT TOP 1 @ma_don = ma_don 
+        FROM don_hang 
+        WHERE ma_khach_hang = @ma_khach_hang 
+          AND da_dat_hang = 0 
+          AND da_huy = 0;
+
+        IF @ma_don IS NULL 
+            THROW 50005, N'Không tìm thấy giỏ hàng đang hoạt động.', 1;
+
+        -- 2. Delete the item
+        DELETE FROM chi_tiet_don_hang 
+        WHERE ma_don = @ma_don AND ma_sach = @ma_sach;
+
+        -- 3. Recalculate Cart Total
+        DECLARE @TongTien MONEY;
+        SELECT @TongTien = SUM(so_luong * gia_ban) 
+        FROM chi_tiet_don_hang 
+        WHERE ma_don = @ma_don;
+
+        UPDATE don_hang 
+        SET tong_tien_thanh_toan = ISNULL(@TongTien, 0) 
+        WHERE ma_don = @ma_don;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- 2. PROCEDURE: Update Cart Quantity
+-- Logic: 
+--   If Quantity <= 0 -> Delete Item.
+--   If Quantity > 0  -> Update Qty AND Refresh Price (Price Trap Fix).
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_CapNhatSoLuongGioHang
+    @ma_khach_hang INT,
+    @ma_sach INT,
+    @so_luong_moi INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- 1. If quantity is 0 or less, just call remove
+        IF @so_luong_moi <= 0
+        BEGIN
+            EXEC sp_XoaKhoiGioHang @ma_khach_hang, @ma_sach;
+            COMMIT TRANSACTION;
+            RETURN;
+        END
+
+        DECLARE @ma_don INT;
+        
+        -- 2. Find Active Basket
+        SELECT TOP 1 @ma_don = ma_don 
+        FROM don_hang 
+        WHERE ma_khach_hang = @ma_khach_hang 
+          AND da_dat_hang = 0 
+          AND da_huy = 0;
+
+        IF @ma_don IS NULL 
+            THROW 50005, N'Không tìm thấy giỏ hàng đang hoạt động.', 1;
+
+        -- 3. Check if item exists in cart
+        IF NOT EXISTS (SELECT 1 FROM chi_tiet_don_hang WHERE ma_don = @ma_don AND ma_sach = @ma_sach)
+            THROW 50006, N'Sách này không có trong giỏ hàng.', 1;
+
+        -- 4. Get Current Price (Refresh price on update to be fair)
+        DECLARE @gia_hien_tai MONEY;
+        DECLARE @ma_gia_hien_tai INT;
+        
+        SELECT @gia_hien_tai = gia_hien_tai, @ma_gia_hien_tai = ma_gia_hien_tai
+        FROM sach WHERE ma_sach = @ma_sach;
+
+        -- 5. Update Detail
+        UPDATE chi_tiet_don_hang
+        SET so_luong = @so_luong_moi,
+            gia_ban = @gia_hien_tai,     -- Lock in new price
+            ma_gia = @ma_gia_hien_tai
+        WHERE ma_don = @ma_don AND ma_sach = @ma_sach;
+
+        -- 6. Recalculate Cart Total
+        DECLARE @TongTien MONEY;
+        SELECT @TongTien = SUM(so_luong * gia_ban) 
+        FROM chi_tiet_don_hang 
+        WHERE ma_don = @ma_don;
+
+        UPDATE don_hang 
+        SET tong_tien_thanh_toan = ISNULL(@TongTien, 0) 
+        WHERE ma_don = @ma_don;
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- 2. PROCEDURE: Set Payment Method (Upsert)
+-- Logic: 
+--   1. Find Active Cart.
+--   2. Check if Payment exists.
+--   3. If yes, UPDATE method. If no, INSERT method.
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_ChonPhuongThucThanhToan
+    @ma_khach_hang INT,
+    @hinh_thuc NVARCHAR(50) -- 'Visa' or 'Shipper'
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- A. Find Active Cart
+        DECLARE @ma_don INT;
+        DECLARE @tong_tien MONEY;
+
+        SELECT TOP 1 @ma_don = ma_don, @tong_tien = tong_tien_thanh_toan
+        FROM don_hang 
+        WHERE ma_khach_hang = @ma_khach_hang 
+          AND da_dat_hang = 0 
+          AND da_huy = 0;
+
+        IF @ma_don IS NULL 
+            THROW 50010, N'Bạn chưa có giỏ hàng để chọn thanh toán.', 1;
+
+        -- B. Validate Method
+        IF @hinh_thuc NOT IN ('Visa', 'Shipper')
+            THROW 50011, N'Phương thức không hợp lệ (Chỉ chấp nhận: Visa, Shipper).', 1;
+
+        -- C. Determine Status (Simulation)
+        -- If 'Shipper' -> Pending. If 'Visa' -> Success (Simulated instant pay).
+        DECLARE @status NVARCHAR(50) = 'Pending';
+        IF @hinh_thuc = 'Visa' SET @status = 'Success';
+
+        -- D. Upsert (Update if exists, Insert if not)
+        MERGE thanh_toan AS target
+        USING (SELECT @ma_don AS ma_don) AS source
+        ON (target.ma_don = source.ma_don)
+        WHEN MATCHED THEN
+            UPDATE SET 
+                hinh_thuc = @hinh_thuc,
+                thanh_tien = @tong_tien,
+                trinh_trang = @status
+        WHEN NOT MATCHED THEN
+            INSERT (ma_don, hinh_thuc, trinh_trang, thanh_tien)
+            VALUES (@ma_don, @hinh_thuc, @status, @tong_tien);
+
+        COMMIT TRANSACTION;
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- PROCEDURE: Get Last Payment Method
+-- Logic: Find the latest Order (by ID) that has a Payment Record
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_LayThanhToanGanNhat
+    @ma_khach_hang INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    -- Select the most recent payment method used by this customer
+    SELECT TOP 1 tt.hinh_thuc
+    FROM don_hang dh
+    INNER JOIN thanh_toan tt ON dh.ma_don = tt.ma_don
+    WHERE dh.ma_khach_hang = @ma_khach_hang
+    ORDER BY dh.ma_don DESC; -- Latest one first
+END;
+GO
+
+-- ======================================================
+-- PROCEDURE: Apply Voucher to Cart
+-- Logic:
+--   1. Check if User owns voucher.
+--   2. Loop through cart items.
+--   3. Sum price of *ELIGIBLE* items only.
+--   4. Calculate Discount.
+--   5. Update Order 'gia_tri_giam_gia' & 'ma_voucher'.
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_ApDungVoucherVaoGioHang
+    @ma_khach_hang INT,
+    @ma_code NVARCHAR(50)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    BEGIN TRY
+        BEGIN TRANSACTION;
+
+        -- A. Find Active Cart
+        DECLARE @ma_don INT;
+        SELECT TOP 1 @ma_don = ma_don FROM don_hang 
+        WHERE ma_khach_hang = @ma_khach_hang AND da_dat_hang = 0 AND da_huy = 0;
+
+        IF @ma_don IS NULL THROW 50020, N'Không tìm thấy giỏ hàng.', 1;
+
+        -- B. Find Voucher & Validate Ownership
+        DECLARE @ma_voucher INT, @ma_nxb INT, @all_books BIT, @type NVARCHAR(20), @val DECIMAL(10,2), @max_disc MONEY;
+        
+        SELECT 
+            @ma_voucher = v.ma_voucher,
+            @ma_nxb = v.ma_nxb,
+            @all_books = v.ap_dung_tat_ca_sach,
+            @type = v.loai_giam,
+            @val = v.gia_tri_giam,
+            @max_disc = v.giam_toi_da
+        FROM voucher v
+        INNER JOIN voucher_thanh_vien vtv ON v.ma_voucher = vtv.ma_voucher
+        WHERE v.ma_code = @ma_code 
+          AND vtv.ma_khach_hang = @ma_khach_hang 
+          AND vtv.so_luong > 0
+          AND GETDATE() BETWEEN v.bat_dau AND v.ket_thuc;
+
+        IF @ma_voucher IS NULL THROW 50021, N'Voucher không hợp lệ hoặc bạn không sở hữu.', 1;
+
+        -- C. Calculate Total Eligible Amount in Cart
+        DECLARE @TongTienDuDieuKien MONEY = 0;
+
+        SELECT @TongTienDuDieuKien = SUM(ct.so_luong * ct.gia_ban)
+        FROM chi_tiet_don_hang ct
+        JOIN sach s ON ct.ma_sach = s.ma_sach
+        WHERE ct.ma_don = @ma_don
+          -- Rule 1: Check Publisher (If Voucher has specific NXB)
+          AND (@ma_nxb IS NULL OR s.ma_nxb = @ma_nxb)
+          -- Rule 2: Check Specific Books (If Voucher is not for all books)
+          AND (@all_books = 1 OR EXISTS (SELECT 1 FROM voucher_sach vs WHERE vs.ma_voucher = @ma_voucher AND vs.ma_sach = s.ma_sach));
+
+        IF @TongTienDuDieuKien IS NULL SET @TongTienDuDieuKien = 0;
+        
+        IF @TongTienDuDieuKien = 0 
+            THROW 50022, N'Không có sản phẩm nào trong giỏ hàng phù hợp với voucher này.', 1;
+
+        -- D. Calculate Discount
+        DECLARE @GiamGia MONEY = 0;
+        
+        IF @type = N'Số tiền'
+            SET @GiamGia = @val;
+        ELSE -- 'Phần trăm'
+            SET @GiamGia = @TongTienDuDieuKien * (@val / 100.0);
+
+        -- Cap discount if max_disc is set
+        IF @max_disc IS NOT NULL AND @GiamGia > @max_disc
+            SET @GiamGia = @max_disc;
+
+        -- Discount cannot exceed eligible total
+        IF @GiamGia > @TongTienDuDieuKien
+            SET @GiamGia = @TongTienDuDieuKien;
+
+        -- E. Update Order
+        UPDATE don_hang 
+        SET ma_voucher = @ma_voucher, 
+            gia_tri_giam_gia = @GiamGia 
+        WHERE ma_don = @ma_don;
+
+        COMMIT TRANSACTION;
+        
+        SELECT @GiamGia AS gia_tri_giam_duoc, @TongTienDuDieuKien as tong_tien_du_dk;
+        
+    END TRY
+    BEGIN CATCH
+        IF @@TRANCOUNT > 0 ROLLBACK TRANSACTION;
+        THROW;
+    END CATCH
+END;
+GO
+
+-- ======================================================
+-- 1. [NEW] ADDRESS SNAPSHOT PROCEDURE (For V5 Schema)
+-- Logic: Copies address text from 'dia_chi_cu_the' to 'don_hang'
+--        This "locks" the address so it doesn't change later.
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_ChonDiaChiGiaoHang
+    @ma_khach_hang INT,
+    @ma_dia_chi INT
+AS
+BEGIN
+    SET NOCOUNT ON;
+    
+    -- A. Find Active Cart
+    DECLARE @MaDon INT;
+    SELECT TOP 1 @MaDon = ma_don FROM don_hang 
+    WHERE ma_khach_hang = @ma_khach_hang AND da_dat_hang = 0 AND da_huy = 0;
+
+    IF @MaDon IS NULL THROW 50001, N'Không tìm thấy giỏ hàng.', 1;
+
+    -- B. Get Address String (Format: "123 Street, Ward, District, City")
+    DECLARE @FullAddress NVARCHAR(500);
+    SELECT @FullAddress = dia_chi_nha + ', ' + phuong_xa + ', ' + quan_huyen + ', ' + thanh_pho
+    FROM dia_chi_cu_the
+    WHERE ma_dia_chi = @ma_dia_chi AND ma_khach_hang = @ma_khach_hang;
+
+    IF @FullAddress IS NULL THROW 50002, N'Địa chỉ không hợp lệ hoặc không thuộc về bạn.', 1;
+
+    -- C. Update Order (Snapshot)
+    UPDATE don_hang 
+    SET dia_chi_giao_hang = @FullAddress 
+    WHERE ma_don = @MaDon;
+END;
+GO
+
+-- ======================================================
+-- 2. [NEW] ADVANCED SEARCH (Assignment Req 2.3a)
+-- Logic: Search by Name (Required) + Author/Type (Optional)
+--        Uses JOINs and WHERE clauses as requested.
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_TimKiemSach_NangCao
+    @ten_sach NVARCHAR(200),           -- REQUIRED
+    @ten_tac_gia NVARCHAR(200) = NULL, -- OPTIONAL
+    @ten_the_loai NVARCHAR(200) = NULL -- OPTIONAL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    IF @ten_sach IS NULL OR LTRIM(RTRIM(@ten_sach)) = ''
+    BEGIN
+        RAISERROR(N'Tên sách không được để trống.', 16, 1);
+        RETURN;
+    END
+
+    SELECT DISTINCT
+        s.ma_sach,
+        s.ten_sach,
+        s.gia_hien_tai,
+        s.so_sao_trung_binh,
+        nxb.ten_nxb,
+        s.nam_xuat_ban,
+        s.hinh_thuc
+    FROM sach s
+    JOIN nha_xuat_ban nxb ON s.ma_nxb = nxb.ma_nxb
+    -- Left Joins for Optional Filters
+    LEFT JOIN sach_tac_gia stg ON s.ma_sach = stg.ma_sach
+    LEFT JOIN tac_gia tg ON stg.ma_tg = tg.ma_tg
+    LEFT JOIN sach_the_loai stl ON s.ma_sach = stl.ma_sach
+    LEFT JOIN the_loai tl ON stl.ma_tl = tl.ma_tl
+    WHERE 
+        s.da_xoa = 0
+        AND s.ten_sach LIKE N'%' + @ten_sach + N'%'
+        AND (@ten_tac_gia IS NULL OR tg.ten_tg LIKE N'%' + @ten_tac_gia + N'%')
+        AND (@ten_the_loai IS NULL OR tl.ten_tl LIKE N'%' + @ten_the_loai + N'%')
+    ORDER BY s.gia_hien_tai DESC;
+END;
+GO
+
+-- ======================================================
+-- 3. [NEW] AUTHOR STATS SEARCH (Assignment Req 2.3b)
+-- Logic: Uses Aggregate (COUNT), GROUP BY, HAVING
+-- ======================================================
+CREATE OR ALTER PROCEDURE sp_TimKiemTacGia_ThongKe
+    @keyword NVARCHAR(200) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT 
+        tg.ma_tg,
+        tg.ten_tg,
+        tg.quoc_tich,
+        COUNT(s.ma_sach) AS so_luong_sach
+    FROM tac_gia tg
+    LEFT JOIN sach_tac_gia stg ON tg.ma_tg = stg.ma_tg
+    LEFT JOIN sach s ON stg.ma_sach = s.ma_sach AND s.da_xoa = 0
+    WHERE 
+        (@keyword IS NULL OR tg.ten_tg LIKE N'%' + @keyword + N'%')
+    GROUP BY 
+        tg.ma_tg, tg.ten_tg, tg.quoc_tich
+    HAVING 
+        COUNT(s.ma_sach) >= 0 
+    ORDER BY 
+        so_luong_sach DESC;
+END;
+GO
+
+PRINT N'All Procedures updated successfully!';
 GO

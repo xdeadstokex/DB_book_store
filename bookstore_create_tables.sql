@@ -1,15 +1,26 @@
 -- ======================================================
---     BOOK STORE DATABASE (SQL Server) - CLEAN V4
+--     BOOK STORE DATABASE (SQL Server) - FINAL V5
+--     Includes: Address Snapshot Column in Orders
 -- ======================================================
-SET ANSI_NULLS ON;
-SET QUOTED_IDENTIFIER ON;
+USE master;
 GO
 
-IF DB_ID('book_store') IS NULL
-    CREATE DATABASE book_store;
+IF DB_ID('book_store') IS NOT NULL
+BEGIN
+    ALTER DATABASE book_store SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE book_store;
+END
+GO
+
+CREATE DATABASE book_store;
 GO
 
 USE book_store;
+GO
+
+-- Explicitly force settings ON for Filtered Index
+SET ANSI_NULLS ON;
+SET QUOTED_IDENTIFIER ON;
 GO
 
 -- ======================================================
@@ -31,7 +42,7 @@ CREATE TABLE sach (
     ma_sach INT IDENTITY(1,1) PRIMARY KEY,
     ten_sach NVARCHAR(200) NOT NULL,
 
-    -- [MERGED TRANSLATOR] - Just a name, no complex table
+    -- [MERGED TRANSLATOR]
     ten_nguoi_dich NVARCHAR(200),
 
     -- [CACHE 1: PRICE]
@@ -189,7 +200,7 @@ CREATE TABLE khach (
 GO
 
 -- ======================================================
--- 13. dia_chi_cu_the (Address)
+-- 13. dia_chi_cu_the (Address Book)
 -- ======================================================
 CREATE TABLE dia_chi_cu_the (
     ma_dia_chi INT IDENTITY(1,1) PRIMARY KEY,
@@ -204,36 +215,48 @@ CREATE TABLE dia_chi_cu_the (
 GO
 
 -- ======================================================
--- 14. voucher (Voucher Definitions)
+-- 14. TABLE: Voucher Definitions
 -- ======================================================
 CREATE TABLE voucher (
     ma_voucher INT IDENTITY(1,1) PRIMARY KEY,
     ma_code NVARCHAR(50) UNIQUE NOT NULL,
     ten_voucher NVARCHAR(200) NOT NULL,
     
-    -- [NULLABLE PUBLISHER]
-    -- NULL = System/Celebration voucher
-    -- NOT NULL = Publisher specific voucher
+    -- [SCOPE]
     ma_nxb INT NULL,
+    ap_dung_tat_ca_sach BIT DEFAULT 1,
     
     bat_dau DATE NOT NULL,
     ket_thuc DATE NOT NULL,
+    
+    -- [VALUE]
     loai_giam NVARCHAR(20) CHECK (loai_giam IN (N'Phần trăm', N'Số tiền')),
     gia_tri_giam DECIMAL(10,2) NOT NULL CHECK (gia_tri_giam > 0),
+    giam_toi_da MONEY NULL, 
     
     FOREIGN KEY (ma_nxb) REFERENCES nha_xuat_ban(ma_nxb) ON DELETE SET NULL
 );
 GO
 
 -- ======================================================
--- 15. voucher_thanh_vien (User Wallet)
+-- 15. TABLE: Voucher - Book Mapping
+-- ======================================================
+CREATE TABLE voucher_sach (
+    ma_voucher INT NOT NULL,
+    ma_sach INT NOT NULL,
+    
+    PRIMARY KEY (ma_voucher, ma_sach),
+    FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE CASCADE,
+    FOREIGN KEY (ma_sach) REFERENCES sach(ma_sach) ON DELETE CASCADE
+);
+GO
+
+-- ======================================================
+-- 16. TABLE: User Wallet (Quantity based)
 -- ======================================================
 CREATE TABLE voucher_thanh_vien (
     ma_voucher INT NOT NULL,
     ma_khach_hang INT NOT NULL,
-    
-    -- [QUANTITY] 
-    -- Allows user to have 5 "Free Shipping" vouchers
     so_luong INT NOT NULL DEFAULT 1 CHECK (so_luong >= 0),
     
     PRIMARY KEY (ma_voucher, ma_khach_hang),
@@ -243,17 +266,31 @@ CREATE TABLE voucher_thanh_vien (
 GO
 
 -- ======================================================
--- 16. don_hang (Order)
+-- 17. don_hang (Order / Basket)
 -- ======================================================
 CREATE TABLE don_hang (
     ma_don INT IDENTITY(1,1) PRIMARY KEY,
     ma_khach_hang INT NOT NULL,
     ma_voucher INT NULL,
-    thoi_diem_dat_hang DATETIME NOT NULL DEFAULT GETDATE(),
-    tong_tien_thanh_toan MONEY NOT NULL CHECK (tong_tien_thanh_toan >= 0),
-    trang_thai_don_hang NVARCHAR(50) NOT NULL,
+    
+    -- [TIMESTAMPS]
+    thoi_diem_tao_gio_hang DATETIME DEFAULT GETDATE(),
+    thoi_diem_dat_hang DATETIME NULL,
+    
+    -- [MONEY]
+    tong_tien_thanh_toan MONEY DEFAULT 0 CHECK (tong_tien_thanh_toan >= 0),
     gia_tri_giam_gia MONEY DEFAULT 0,
+    
+    -- [STATUS BOOLEANS]
+    da_dat_hang BIT DEFAULT 0, 
+    da_giao_hang BIT DEFAULT 0, 
+    da_huy BIT DEFAULT 0,
+
     ngay_du_kien_nhan_hang DATETIME NULL,
+
+    -- [NEW: ADDRESS SNAPSHOT]
+    -- Saves the text address at moment of checkout
+    dia_chi_giao_hang NVARCHAR(500) NULL,
     
     FOREIGN KEY (ma_khach_hang) REFERENCES khach_hang(ma_khach_hang) ON DELETE CASCADE,
     FOREIGN KEY (ma_voucher) REFERENCES voucher(ma_voucher) ON DELETE SET NULL
@@ -261,7 +298,7 @@ CREATE TABLE don_hang (
 GO
 
 -- ======================================================
--- 17. chi_tiet_don_hang (Order Detail)
+-- 18. chi_tiet_don_hang (Order Detail)
 -- ======================================================
 CREATE TABLE chi_tiet_don_hang (
     ma_don INT NOT NULL,
@@ -270,8 +307,9 @@ CREATE TABLE chi_tiet_don_hang (
     -- [SNAPSHOTS]
     ma_gia INT NOT NULL, 
     gia_ban MONEY NOT NULL CHECK (gia_ban >= 0),
+    
     so_luong INT NOT NULL CHECK (so_luong > 0),
-    the_loai NVARCHAR(100),
+    the_loai NVARCHAR(100), 
     
     PRIMARY KEY (ma_don, ma_sach),
     FOREIGN KEY (ma_don) REFERENCES don_hang(ma_don) ON DELETE CASCADE,
@@ -281,13 +319,13 @@ CREATE TABLE chi_tiet_don_hang (
 GO
 
 -- ======================================================
--- 18. thanh_toan (Payment)
+-- 19. thanh_toan (Payment)
 -- ======================================================
 CREATE TABLE thanh_toan (
     ma_thanh_toan INT IDENTITY(1,1) PRIMARY KEY,
-    ma_don INT NOT NULL UNIQUE,
-    hinh_thuc NVARCHAR(50) NOT NULL,
-    trinh_trang NVARCHAR(50) NOT NULL,
+    ma_don INT NOT NULL UNIQUE, 
+    hinh_thuc NVARCHAR(50) NOT NULL CHECK (hinh_thuc IN ('Visa', 'Shipper')),
+    trinh_trang NVARCHAR(50) NOT NULL DEFAULT 'Pending', 
     thanh_tien MONEY NOT NULL CHECK (thanh_tien >= 0),
     
     FOREIGN KEY (ma_don) REFERENCES don_hang(ma_don) ON DELETE CASCADE
@@ -295,7 +333,7 @@ CREATE TABLE thanh_toan (
 GO
 
 -- ======================================================
--- 19. kho (Inventory)
+-- 20. kho (Inventory)
 -- ======================================================
 CREATE TABLE kho (
     ma_kho INT IDENTITY(1,1) PRIMARY KEY,
@@ -305,7 +343,7 @@ CREATE TABLE kho (
 GO
 
 -- ======================================================
--- 20. so_luong_sach_kho (Inventory Level)
+-- 21. so_luong_sach_kho (Inventory Level)
 -- ======================================================
 CREATE TABLE so_luong_sach_kho (
     ma_kho INT NOT NULL,
@@ -319,7 +357,7 @@ CREATE TABLE so_luong_sach_kho (
 GO
 
 -- ======================================================
--- 21. danh_gia (Review)
+-- 22. danh_gia (Review)
 -- ======================================================
 CREATE TABLE danh_gia (
     ma_dg INT IDENTITY(1,1) PRIMARY KEY,
@@ -335,17 +373,16 @@ CREATE TABLE danh_gia (
 GO
 
 -- ======================================================
--- 22. INDEXES
+-- 23. INDEXES
 -- ======================================================
 CREATE INDEX idx_sach_nxb ON sach(ma_nxb);
 CREATE INDEX idx_gia_ban_sach ON gia_ban(ma_sach);
 CREATE INDEX idx_don_hang_khach ON don_hang(ma_khach_hang);
 CREATE INDEX idx_rating_snapshot ON tong_hop_danh_gia(ma_sach);
 
--- Unique index for Soft Deletes
 CREATE UNIQUE NONCLUSTERED INDEX idx_unique_active_book_name
 ON sach(ten_sach)
 WHERE da_xoa = 0; 
 
-PRINT 'Database (Clean V4) created successfully!';
+PRINT 'Database (Clean V5) created successfully!';
 GO
