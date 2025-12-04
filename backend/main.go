@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/base64"
@@ -168,6 +169,18 @@ func validate_admin_token(r *http.Request) bool {
 	return time.Now().Unix() <= exp
 }
 
+func generate_session_id() string {
+	b := make([]byte, 16)
+	// Read random bytes from crypto/rand
+	_, err := rand.Read(b) 
+	if err != nil { 
+		// Fallback if entropy fails
+		return fmt.Sprintf("%d", time.Now().UnixNano()) 
+	}
+	// Encode those random bytes to a URL-safe string
+	return base64.RawURLEncoding.EncodeToString(b)
+}
+
 //#########################
 //## APIS FUNCS SECTION ###
 //#########################
@@ -229,6 +242,9 @@ func handle_apis() {
 	// Admin
 	http.HandleFunc("/admin/get_all_orders", admin_get_all_orders)
 	http.HandleFunc("/admin/restock_book", admin_restock_book)
+
+	// Guest
+	http.HandleFunc("/create_guest_session", create_guest_session)
 }
 
 //######################
@@ -985,4 +1001,32 @@ func admin_restock_book(w http.ResponseWriter, r *http.Request) {
     }
 
 	sendSuccess(w, "Inventory Updated", nil)
+}
+
+// ###############################################
+// ## 37. GUEST: CREATE SESSION (Start Shopping) #
+// ###############################################
+func create_guest_session(w http.ResponseWriter, r *http.Request) {
+    if set_CORS_headers(w, r, 2) { return }
+
+    // 1. Generate Unique Session Token
+    sessionToken := generate_session_id()
+
+    // 2. Call SQL
+    var newID int
+    query := `EXEC sp_TaoSessionKhach @ma_session=@p1, @ma_khach_hang=@pOut OUTPUT`
+    
+    _, err := db.ExecContext(context.Background(), query,
+        sql.Named("p1", sessionToken),
+        sql.Named("pOut", sql.Out{Dest: &newID}))
+
+    if err != nil { sendError(w, 500, "Failed to create guest: "+err.Error()); return }
+
+    // 3. Return ID and Token
+    // Frontend should store 'guest_id' and 'guest_token' in LocalStorage
+    sendSuccess(w, "Guest Session Started", map[string]interface{}{
+        "customer_id":   newID,
+        "session_token": sessionToken,
+        "role":          "guest",
+    })
 }
