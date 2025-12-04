@@ -91,6 +91,7 @@ POST /login_member                           [OPEN]
 GET  /get_member_info                        [AUTH]
 POST /add_address                            [AUTH]
 GET  /get_my_addresses                       [AUTH]
+POST /create_guest_session                   [OPEN] // return guest id, must use this for guest order
 
 --- USER: SHOPPING FLOW ---
 POST /add_to_cart                            [OPEN] (Uses customer_id in JSON)
@@ -308,6 +309,19 @@ Input:
 ///////////////////////
 Logic: List all addresses for logged-in user. Header Token required.
 
+////////////////////
+[POST] /create_guest_session
+////////////////////
+Logic: creates temporary guest and returns guest id.
+Response:
+{
+  "data": {
+    "customer_id": 6,
+    "role": "guest",
+    "session_token": "96zzM8vjGD7c_AFl3b5sCQ"
+  },
+  "message": "Guest Session Started"
+}
 ================================================================================
 4. CART & ORDER FLOW
 ================================================================================
