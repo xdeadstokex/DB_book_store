@@ -2,7 +2,7 @@ USE book_store;
 GO
 
 -- ======================================================
--- 1. GET BOOK DETAIL (Single Row with Aggregated Strings)
+-- 1. GET BOOK DETAIL (Returns IDs and Names for Frontend)
 -- ======================================================
 CREATE OR ALTER FUNCTION fn_LayChiTietSach (@MaSach INT)
 RETURNS TABLE
@@ -10,25 +10,39 @@ AS
 RETURN
 (
     SELECT 
-        s.ma_sach, s.ten_sach, s.gia_hien_tai, s.so_sao_trung_binh, s.ten_nguoi_dich,
-        s.mo_ta, s.hinh_thuc, s.so_trang, s.nam_xuat_ban, s.ngay_du_kien_phat_hanh, s.do_tuoi,
-        -- Publisher Name
+        s.ma_sach, 
+        s.ten_sach, 
+        s.gia_hien_tai, 
+        s.so_sao_trung_binh, 
+        s.ten_nguoi_dich,
+        s.mo_ta, 
+        s.hinh_thuc, 
+        s.so_trang, 
+        s.nam_xuat_ban, 
+        s.ngay_du_kien_phat_hanh, 
+        s.do_tuoi,
+        
+        -- Publisher Info
+        nxb.ma_nxb,
         nxb.ten_nxb,
-        -- Combine Authors into one string: "Nam Cao, To Hoai"
+        
+        -- JSON List of Authors: [{"id": 1, "name": "Nam Cao"}, ...]
         (
-            SELECT STRING_AGG(tg.ten_tg, ', ') 
+            SELECT tg.ma_tg AS id, tg.ten_tg AS name
             FROM tac_gia tg 
             JOIN sach_tac_gia stg ON tg.ma_tg = stg.ma_tg 
             WHERE stg.ma_sach = s.ma_sach
-        ) AS danh_sach_tac_gia,
+            FOR JSON PATH
+        ) AS danh_sach_tac_gia_json,
         
-        -- Combine Categories into one string: "Novel, Horror"
+        -- JSON List of Categories: [{"id": 2, "name": "Horror"}, ...]
         (
-            SELECT STRING_AGG(tl.ten_tl, ', ') 
+            SELECT tl.ma_tl AS id, tl.ten_tl AS name
             FROM the_loai tl 
             JOIN sach_the_loai stl ON tl.ma_tl = stl.ma_tl 
             WHERE stl.ma_sach = s.ma_sach
-        ) AS danh_sach_the_loai
+            FOR JSON PATH
+        ) AS danh_sach_the_loai_json
 
     FROM sach s
     JOIN nha_xuat_ban nxb ON s.ma_nxb = nxb.ma_nxb
