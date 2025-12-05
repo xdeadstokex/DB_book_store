@@ -65,18 +65,19 @@
 
 ### OVERVIEW
 ```txt
-for admin token get it in terminal, will change every 5 min
+Note: For Admin Token, copy from terminal. Changes every 5 min.
+      Auth mean bearer token is req.
 
---- BOOKS & SEARCH ---
+1. BOOKS & SEARCH (Public)
 GET  /get_all_books                          [OPEN]
 GET  /get_book_by_id?id={id}                 [OPEN]
-GET  /search_books?name={x}...               [OPEN]
+GET  /search_books?name={x}&author={y}...    [OPEN]
 GET  /get_books_by_author?id={id}            [OPEN]
 GET  /get_books_by_category?id={id}          [OPEN]
 GET  /get_nxb_by_id?id={id}                  [OPEN]
 GET  /get_price_by_id?id={id}                [OPEN]
 
---- ADMIN MANAGEMENT ---
+2. ADMIN MANAGEMENT (Header: Authorization: Bearer <AdminToken>)
 POST /add_new_book                           [ADMIN]
 POST /update_book_info?id={id}               [ADMIN]
 POST /change_book_price?id={id}              [ADMIN]
@@ -85,32 +86,36 @@ GET  /admin/get_all_orders                   [ADMIN]
 POST /admin/restock_book                     [ADMIN]
 POST /update_order_status                    [ADMIN]
 
---- USER: PROFILE & ADDRESS ---
+3. AUTH & SESSION
 POST /register_member                        [OPEN]
-POST /login_member                           [OPEN]
-GET  /get_member_info                        [AUTH]
+POST /login_member                           [OPEN]  -> Returns Member Token
+POST /create_guest_session                   [OPEN]  -> Returns Guest Token (REQUIRED for Guest Shopping)
+GET  /get_member_info                        [AUTH]  (Member Only - Guest gets 403)
 POST /add_address                            [AUTH]
 GET  /get_my_addresses                       [AUTH]
-POST /create_guest_session                   [OPEN] // return guest id, must use this for guest order
 
---- USER: SHOPPING FLOW ---
-POST /add_to_cart                            [OPEN] (Uses customer_id in JSON)
-POST /remove_from_cart                       [OPEN] (Uses customer_id in JSON)
-POST /update_cart_qty                        [OPEN] (Uses customer_id in JSON)
-GET  /get_current_cart?id={uid}              [OPEN]
-POST /set_shipping_address                   [AUTH] (Strict Token Check)
-POST /set_payment_method                     [OPEN]
-GET  /get_last_payment_method                [AUTH]
-POST /apply_voucher                          [OPEN]
-GET  /get_my_vouchers                        [AUTH]
-GET  /find_best_voucher                      [AUTH]
-POST /checkout                               [OPEN] (Uses cart_id in JSON)
-POST /cancel_order                           [AUTH] (Strict Token Check)
+4. SHOPPING FLOW (Header: Authorization: Bearer <UserToken>)
+Works for both Guests and Members.
+POST /add_to_cart                            [AUTH] (ID from Token)
+POST /remove_from_cart                       [AUTH] (ID from Token)
+POST /update_cart_qty                        [AUTH] (ID from Token)
+GET  /get_current_cart                       [AUTH] (ID from Token)
+POST /checkout                               [AUTH] (Uses cart_id in JSON)
+POST /set_shipping_address                   [AUTH]
+POST /set_payment_method                     [AUTH]
+POST /cancel_order                           [AUTH]
+GET  /get_order_history                      [AUTH]
 
---- HISTORY & RATINGS ---
-GET  /get_order_history?id={uid}             [OPEN]
-GET  /get_order_detail?id={oid}              [OPEN]
-POST /add_rating                             [AUTH]
+5. MEMBER EXCLUSIVES (Header: Authorization: Bearer <MemberToken>)
+Guests will receive Error 403 or Empty Lists.
+POST /apply_voucher                          [AUTH] (Member Only)
+GET  /get_my_vouchers                        [AUTH] (Member Only)
+GET  /find_best_voucher                      [AUTH] (Member Only)
+GET  /get_last_payment_method                [AUTH] (Member Only)
+POST /add_rating                             [AUTH] (Member Only)
+
+6. PUBLIC DATA
+GET  /get_order_detail?id={oid}              [AUTH] (Checks ownership of Order ID)
 GET  /get_ratings_by_book?id={id}            [OPEN]
 GET  /get_rating_by_id?id={id}               [OPEN]
 ```
@@ -312,10 +317,11 @@ Logic: List all addresses for logged-in user. Header Token required.
 ////////////////////
 [POST] /create_guest_session
 ////////////////////
-Logic: creates temporary guest and returns guest id.
+Logic: creates temporary guest and returns guest id and token.
 Response:
 {
   "data": {
+    "token": "ey...",
     "customer_id": 6,
     "role": "guest",
     "session_token": "96zzM8vjGD7c_AFl3b5sCQ"
@@ -324,14 +330,14 @@ Response:
 }
 ================================================================================
 4. CART & ORDER FLOW
+   * Requires Header: Authorization: Bearer <UserToken> (Guest or Member)
 ================================================================================
 ////////////////////
 [POST] /add_to_cart
 ////////////////////
-Logic: Add item.
+Logic: Add item. ID extracted from Token.
 Input:
 {
-  "customer_id": 10,
   "ma_sach": 5,
   "so_luong": 1
 }
@@ -339,28 +345,26 @@ Input:
 /////////////////////////
 [POST] /remove_from_cart
 /////////////////////////
-Logic: Remove item.
+Logic: Remove item. ID extracted from Token.
 Input:
 {
-  "customer_id": 10,
   "ma_sach": 5
 }
 
 ////////////////////////
 [POST] /update_cart_qty
 ////////////////////////
-Logic: Change quantity.
+Logic: Change quantity. ID extracted from Token.
 Input:
 {
-  "customer_id": 10,
   "ma_sach": 5,
   "so_luong": 3
 }
 
-///////////////////////////////////
-[GET] /get_current_cart?id={user_id}
-///////////////////////////////////
-Logic: Returns Cart + Items + Live Stock/Price Warnings.
+//////////////////////
+[GET] /get_current_cart
+//////////////////////
+Logic: Returns Cart + Items + Live Stock/Price Warnings. ID extracted from Token.
 Response:
 {
   "header": { "ma_don": 100, ... },
@@ -380,37 +384,11 @@ Input:
 ///////////////////////////
 [POST] /set_payment_method
 ///////////////////////////
-Logic: Set 'Visa' or 'Shipper'.
+Logic: Set 'Visa' or 'Shipper'. ID extracted from Token.
 Input:
 {
-  "customer_id": 10,
   "hinh_thuc": "Visa" // or "Shipper"
 }
-
-//////////////////////////////
-[GET] /get_last_payment_method
-//////////////////////////////
-Logic: Get last used method. Header Token required.
-
-//////////////////////
-[POST] /apply_voucher
-//////////////////////
-Logic: Apply code.
-Input:
-{
-  "customer_id": 10,
-  "voucher_code": "SUMMER2025"
-}
-
-///////////////////////
-[GET] /get_my_vouchers
-///////////////////////
-Logic: Get owned vouchers. Header Token required.
-
-////////////////////////
-[GET] /find_best_voucher
-////////////////////////
-Logic: Auto-find best code. Header Token required.
 
 /////////////////
 [POST] /checkout
@@ -430,37 +408,143 @@ Input:
   "ma_don": 555
 }
 
-================================================================================
-5. HISTORY & RATINGS
-================================================================================
 ////////////////////////////////////
-[GET] /get_order_history?id={user_id}
+[GET] /get_order_history
 ////////////////////////////////////
-Logic: List past orders.
+Logic: List past orders. ID extracted from Token.
+Response:
+[
+  {
+    "stt_don": 2,
+    "ma_don": 2,
+    "ngay_dat": "2024-02-02T00:00:00Z",
+    "tong_tien": 120000,
+    "trang_thai": "Đã giao",
+    "tong_items": 1
+  },
+  {
+    "stt_don": 1,
+    "ma_don": 1,
+    "ngay_dat": "2024-01-10T00:00:00Z",
+    "tong_tien": 95000,
+    "trang_thai": "Đã giao",
+    "tong_items": 1
+  }
+]
 
-////////////////////////////////////
-[GET] /get_order_detail?id={order_id}
-////////////////////////////////////
-Logic: List items in past order.
+================================================================================
+5. MEMBER EXCLUSIVES (HISTORY & RATINGS)
+   * Requires Header: Authorization: Bearer <MemberToken>
+   * Guest Tokens will receive 403 Forbidden
+================================================================================
+//////////////////////////////
+[GET] /get_last_payment_method
+//////////////////////////////
+Logic: Get last used method.
+Response:
+{
+  "data": {
+    "hinh_thuc": "Shipper"
+  },
+  "message": "Found"
+}
+
+//////////////////////
+[POST] /apply_voucher
+//////////////////////
+Logic: Apply code.
+Input:
+{
+  "voucher_code": "SUMMER2025"
+}
+
+///////////////////////
+[GET] /get_my_vouchers
+///////////////////////
+Logic: Get owned vouchers.
+Response:
+[
+  {
+    "ma_voucher": 1,
+    "ma_code": "WELCOME10",
+    "ten_voucher": "Giảm 10% Toàn Sàn",
+    "loai_giam": "Phần trăm",
+    "gia_tri_giam": 10,
+    "giam_toi_da": 50000,
+    "ngay_het_han": "2025-12-31T00:00:00Z",
+    "so_luong": 2
+  },
+  {
+    "ma_voucher": 3,
+    "ma_code": "BIGSALE50",
+    "ten_voucher": "Giảm 50% (Max 100k)",
+    "loai_giam": "Phần trăm",
+    "gia_tri_giam": 50,
+    "giam_toi_da": 100000,
+    "ngay_het_han": "2025-12-31T00:00:00Z",
+    "so_luong": 1
+  }
+]
+////////////////////////
+[GET] /find_best_voucher
+////////////////////////
+Logic: Auto-find best code.
 
 /////////////////
 [POST] /add_rating
 /////////////////
-Logic: Review a book. Header Token required.
+Logic: Review a book.
 Input:
 {
   "ma_sach": 5,
   "so_sao": 5,
-  "noi_dung": "Sach rat hay!",
+  "noi_dung": "Sach rat hay!"
 }
+
+================================================================================
+6. PUBLIC DATA (REVIEWS & DETAILS)
+================================================================================
+////////////////////////////////////
+[GET] /get_order_detail?id={order_id}
+////////////////////////////////////
+Logic: List items in past order. Requires Auth (Ownership check).
+Response:
+[
+  {
+    "ma_sach": 1,
+    "ten_sach": "Tôi thấy hoa vàng trên cỏ xanh",
+    "hinh_thuc": "Bìa mềm",
+    "so_luong": 1,
+    "gia_mua": 95000,
+    "thanh_tien": 95000
+  }
+]
 
 ////////////////////////////////
 [GET] /get_ratings_by_book?id={id}
 ////////////////////////////////
 Logic: List reviews.
+Response:
+[
+  {
+    "ma_dg": 1,
+    "ten_nguoi_dung": "Lê Văn Nam",
+    "so_sao": 5,
+    "noi_dung": "Sách rất hay, bìa đẹp",
+    "ngay_danh_gia": "2024-01-15"
+  }
+]
 
 //////////////////////////////
 [GET] /get_rating_by_id?id={id}
 //////////////////////////////
 Logic: Get single review.
+Response:
+{
+  "ma_dg": 1,
+  "ten_nguoi_dung": "Lê Văn Nam",
+  "so_sao": 5,
+  "noi_dung": "Sách rất hay, bìa đẹp",
+  "ngay_danh_gia": "2024-01-15"
+}
 ```
