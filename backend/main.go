@@ -171,13 +171,8 @@ func validate_admin_token(r *http.Request) bool {
 
 func generate_session_id() string {
 	b := make([]byte, 16)
-	// Read random bytes from crypto/rand
 	_, err := rand.Read(b) 
-	if err != nil { 
-		// Fallback if entropy fails
-		return fmt.Sprintf("%d", time.Now().UnixNano()) 
-	}
-	// Encode those random bytes to a URL-safe string
+	if err != nil { return fmt.Sprintf("%d", time.Now().UnixNano()) }
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
@@ -280,7 +275,7 @@ func get_book_by_id(w http.ResponseWriter, r *http.Request) {
 	err := db.QueryRow("SELECT * FROM fn_LayChiTietSach(@p1)", sql.Named("p1", id)).Scan(
 		&b.MaSach, &b.TenSach, &b.GiaHienTai, &b.SoSaoTrungBinh, &b.TenNguoiDich,
 		&b.MoTa, &b.HinhThuc, &b.SoTrang, &b.NamXuatBan, &b.NgayPhatHanh,
-		&b.TenNXB, &b.DanhSachTacGia, &b.DanhSachTheLoai)
+		&b.DoTuoi, &b.TenNXB, &b.DanhSachTacGia, &b.DanhSachTheLoai)
 
 	if err == sql.ErrNoRows { sendError(w, 404, "Book Not Found"); return }
 	if err != nil { sendError(w, 500, err.Error()); return }
@@ -412,28 +407,33 @@ func search_books(w http.ResponseWriter, r *http.Request) {
 //###########################
 func add_to_cart(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var input CartActionInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
 
 	var cartID int
 	err := db.QueryRowContext(context.Background(), "EXEC sp_ThemSachVaoGioHang @ma_khach_hang=@p1, @ma_sach=@p2, @so_luong=@p3",
-		sql.Named("p1", input.MaKhachHang), sql.Named("p2", input.MaSach),
+		sql.Named("p1", uid), sql.Named("p2", input.MaSach),
 		sql.Named("p3", input.SoLuong)).Scan(&cartID)
 
 	if err != nil { sendError(w, 500, err.Error()); return }
 	sendSuccess(w, "Item Added to Cart", map[string]int{"cart_id": cartID})
 }
 
+
 //###########################
 //## 9. CART: REMOVE ITEM ###
 //###########################
 func remove_from_cart(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var input CartActionInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
 
 	_, err := db.ExecContext(context.Background(), "EXEC sp_XoaKhoiGioHang @ma_khach_hang=@p1, @ma_sach=@p2",
-		sql.Named("p1", input.MaKhachHang), sql.Named("p2", input.MaSach))
+		sql.Named("p1", uid), sql.Named("p2", input.MaSach))
 
 	if err != nil { sendError(w, 500, err.Error()); return }
 	sendSuccess(w, "Item Removed", nil)
@@ -444,11 +444,13 @@ func remove_from_cart(w http.ResponseWriter, r *http.Request) {
 //###########################
 func update_cart_qty(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var input CartActionInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
 
 	_, err := db.ExecContext(context.Background(), "EXEC sp_CapNhatSoLuongGioHang @ma_khach_hang=@p1, @ma_sach=@p2, @so_luong_moi=@p3",
-		sql.Named("p1", input.MaKhachHang), sql.Named("p2", input.MaSach), sql.Named("p3", input.SoLuong))
+		sql.Named("p1", uid), sql.Named("p2", input.MaSach), sql.Named("p3", input.SoLuong))
 
 	if err != nil { sendError(w, 500, err.Error()); return }
 	sendSuccess(w, "Cart Updated", nil)
@@ -459,9 +461,8 @@ func update_cart_qty(w http.ResponseWriter, r *http.Request) {
 //########################################
 func get_current_cart(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
-	uid := get_id_from_url(r, w); if uid == -1 { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
 
-	// 1. Get Cart Header
 	var h CartHeader
 	err := db.QueryRow("SELECT * FROM fn_LayGioHangHienTai(@p1)", sql.Named("p1", uid)).Scan(
 		&h.MaDon, &h.NgayTao, &h.TongTien, &h.TongSoLuong)
@@ -469,7 +470,6 @@ func get_current_cart(w http.ResponseWriter, r *http.Request) {
 	if err == sql.ErrNoRows { sendSuccess(w, "Cart Empty", nil); return }
 	if err != nil { sendError(w, 500, err.Error()); return }
 
-	// 2. Get Cart Items
 	rows, _ := db.Query("SELECT * FROM fn_LayChiTietDonHang(@p1)", sql.Named("p1", h.MaDon))
 	var items []CartItem
 	for rows.Next() {
@@ -479,13 +479,11 @@ func get_current_cart(w http.ResponseWriter, r *http.Request) {
 	}
 	rows.Close()
 
-	// 3. [CURSOR FUNC CALL] Get Stock/Price Warnings
 	warnRows, _ := db.Query("SELECT * FROM fn_ReviewGioHang_Live(@p1)", sql.Named("p1", uid))
 	var warnings []string
 	for warnRows.Next() {
 		var ms int; var ts, code, msg string
 		warnRows.Scan(&ms, &ts, &code, &msg)
-		// Format: "[STOCK_WARNING] Book Name: Warehouse only has 2 left..."
 		warnings = append(warnings, fmt.Sprintf("[%s] %s: %s", code, ts, msg))
 	}
 	warnRows.Close()
@@ -503,41 +501,32 @@ func get_current_cart(w http.ResponseWriter, r *http.Request) {
 //#################################################
 func checkout(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var input struct { CartID int `json:"cart_id"` }
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
 
-    // 1. Check Address Snapshot and Payment Existence
-    var addrCheck sql.NullString
-    var paymentCheck int
-    query := `SELECT dh.dia_chi_giao_hang, COUNT(tt.ma_thanh_toan)
-        FROM don_hang dh
-        LEFT JOIN thanh_toan tt ON dh.ma_don = tt.ma_don
-        WHERE dh.ma_don = @p1 GROUP BY dh.dia_chi_giao_hang`
+	// [FIX] Verify cart ownership
+	var ownerID int
+	err := db.QueryRow("SELECT ma_khach_hang FROM don_hang WHERE ma_don = @p1", sql.Named("p1", input.CartID)).Scan(&ownerID)
+	if err != nil { sendError(w, 404, "Cart Not Found"); return }
+	if ownerID != uid { sendError(w, 403, "This cart does not belong to you"); return }
 
-    err := db.QueryRow(query, sql.Named("p1", input.CartID)).Scan(&addrCheck, &paymentCheck)
-    if err != nil { sendError(w, 404, "Cart Not Found"); return }
+	var addrCheck sql.NullString
+	var paymentCheck int
+	query := `SELECT dh.dia_chi_giao_hang, COUNT(tt.ma_thanh_toan)
+		FROM don_hang dh
+		LEFT JOIN thanh_toan tt ON dh.ma_don = tt.ma_don
+		WHERE dh.ma_don = @p1 GROUP BY dh.dia_chi_giao_hang`
+	err = db.QueryRow(query, sql.Named("p1", input.CartID)).Scan(&addrCheck, &paymentCheck)
+	
+	if !addrCheck.Valid || addrCheck.String == "" { sendError(w, 400, "Missing Shipping Address"); return }
+	if paymentCheck == 0 { sendError(w, 400, "Missing Payment Method"); return }
 
-    if !addrCheck.Valid || addrCheck.String == "" {
-        sendError(w, 400, "Missing Shipping Address: Please select an address first.")
-        return
-    }
-    if paymentCheck == 0 {
-        sendError(w, 400, "Missing Payment Method: Please select Visa or Shipper first.")
-        return
-    }
-
-	// 2. Execute Checkout (Trigger handles Stock/Stats)
-	_, err = db.ExecContext(context.Background(), "UPDATE don_hang SET da_dat_hang = 1 WHERE ma_don = @p1",
-		sql.Named("p1", input.CartID))
-
+	_, err = db.ExecContext(context.Background(), "UPDATE don_hang SET da_dat_hang = 1 WHERE ma_don = @p1", sql.Named("p1", input.CartID))
 	if err != nil {
-		msg := err.Error()
-		if strings.Contains(msg, "không đủ hàng trong kho") {
-			sendError(w, 409, "Out of Stock: " + msg)
-		} else {
-			sendError(w, 500, msg)
-		}
-		return 
+		if strings.Contains(err.Error(), "không đủ hàng") { sendError(w, 409, "Out of Stock: "+err.Error()); return }
+		sendError(w, 500, err.Error()); return 
 	}
 	sendSuccess(w, "Order Placed Successfully", nil)
 }
@@ -596,6 +585,7 @@ func get_my_addresses(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(list)
 }
 
+
 //##########################################
 //## 16. ORDER: CANCEL (Triggers Logic) ####
 //##########################################
@@ -605,7 +595,7 @@ func cancel_order(w http.ResponseWriter, r *http.Request) {
 	var input struct { MaDon int `json:"ma_don"` }
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
 
-	// Only cancel if owned by user, confirmed, not shipped, not cancelled
+	// Logic: User can only cancel if it belongs to them (uid check in SQL)
 	query := `UPDATE don_hang SET da_huy = 1 WHERE ma_don = @p1 AND ma_khach_hang = @p2 
 		  AND da_dat_hang = 1 AND da_giao_hang = 0 AND da_huy = 0`
 	res, err := db.ExecContext(context.Background(), query, sql.Named("p1", input.MaDon), sql.Named("p2", uid))
@@ -633,31 +623,44 @@ func update_order_status(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//#######################
-//## 18. GET HISTORY ####
-//#######################
+
+// ############################
+// ## 18. GET ORDER HISTORY ###
+// ############################
 func get_order_history(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
-	id := get_id_from_url(r, w); if id == -1 { return }
-	rows, err := db.Query("SELECT * FROM fn_LayTatCaDonHang(@p1)", sql.Named("p1", id))
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+	
+	rows, err := db.Query("SELECT * FROM fn_LayTatCaDonHang(@p1) ORDER BY stt_don DESC", sql.Named("p1", uid))
 	if err != nil { sendError(w, 500, err.Error()); return }
 	defer rows.Close()
+	
 	var list []OrderHistory
 	for rows.Next() {
 		var o OrderHistory
-		rows.Scan(&o.MaDon, &o.NgayDat, &o.TongTien, &o.TrangThai, &o.TongItems)
+		rows.Scan(&o.STT, &o.MaDon, &o.NgayDat, &o.TongTien, &o.TrangThai, &o.TongItems)
 		list = append(list, o)
 	}
 	if list == nil { list = []OrderHistory{} }
 	json.NewEncoder(w).Encode(list)
 }
 
-//############################
-//## 19. GET ORDER DETAIL ####
-//############################
+
+//###########################
+//## 19. GET ORDER DETAIL ###
+//###########################
 func get_order_detail(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
-	id := get_id_from_url(r, w); if id == -1 { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+	
+	id := get_id_from_url(r, w); if id == -1 { return } // This is Order ID, not User ID
+
+	// [FIX] Security Check: Does Order belong to UID?
+	var owner int
+	err := db.QueryRow("SELECT ma_khach_hang FROM don_hang WHERE ma_don = @p1", sql.Named("p1", id)).Scan(&owner)
+	if err != nil { sendError(w, 404, "Order Not Found"); return }
+	if owner != uid { sendError(w, 403, "Access Denied"); return }
+
 	rows, err := db.Query("SELECT * FROM fn_LayChiTietDonHang(@p1)", sql.Named("p1", id))
 	if err != nil { sendError(w, 500, err.Error()); return }
 	defer rows.Close()
@@ -713,16 +716,25 @@ func login_member(w http.ResponseWriter, r *http.Request) {
 //## 22. GET MEMBER INFO ##
 //#########################
 func get_member_info(w http.ResponseWriter, r *http.Request) {
-	if set_CORS_headers(w, r, 1) { return }
-	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
-	var m MemberInfo
-	var nDob sql.NullString
-	err := db.QueryRow("SELECT * FROM fn_LayThongTinCaNhan(@p1)", sql.Named("p1", uid)).Scan(
-		&m.MaKhachHang, &m.HoTen, &m.Email, &m.SDT, &nDob,
-		&m.CapDo, &m.DiemTichLuy, &m.TongChiTieu, &m.TenDangNhap)
-	if err != nil { sendError(w, 500, err.Error()); return }
-	m.NgaySinh = nullToString(nDob)
-	json.NewEncoder(w).Encode(m)
+    if set_CORS_headers(w, r, 1) { return }
+    uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+    
+    var m MemberInfo
+    var nDob sql.NullString
+    
+    err := db.QueryRow("SELECT * FROM fn_LayThongTinCaNhan(@p1)", sql.Named("p1", uid)).Scan(
+        &m.MaKhachHang, &m.HoTen, &m.Email, &m.SDT, &nDob,
+        &m.CapDo, &m.DiemTichLuy, &m.TongChiTieu, &m.TenDangNhap)
+    
+    // [NEW] Handle Guest (No Rows) gracefully
+    if err == sql.ErrNoRows { 
+        sendError(w, 403, "Guest account has no member profile")
+        return 
+    }
+    if err != nil { sendError(w, 500, err.Error()); return }
+    
+    m.NgaySinh = nullToString(nDob)
+    json.NewEncoder(w).Encode(m)
 }
 
 //############################
@@ -730,10 +742,14 @@ func get_member_info(w http.ResponseWriter, r *http.Request) {
 //############################
 func set_payment_method(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var input PaymentMethodInput
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil { sendError(w, 400, "Bad JSON"); return }
+	
+	// [FIX] Uses 'uid' token
 	_, err := db.ExecContext(context.Background(), "EXEC sp_ChonPhuongThucThanhToan @ma_khach_hang=@p1, @hinh_thuc=@p2",
-		sql.Named("p1", input.MaKhachHang), sql.Named("p2", input.HinhThuc))
+		sql.Named("p1", uid), sql.Named("p2", input.HinhThuc))
 	if err != nil { sendError(w, 500, err.Error()); return }
 	sendSuccess(w, "Payment Method Set", nil)
 }
@@ -755,12 +771,22 @@ func get_last_payment_method(w http.ResponseWriter, r *http.Request) {
 //#######################
 func apply_voucher(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 2) { return }
+	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
+
 	var i ApplyVoucherInput
 	if json.NewDecoder(r.Body).Decode(&i) != nil { sendError(w, 400, "Bad JSON"); return }
 	var discount, eligible float64
+	// [FIX] Uses 'uid' token
 	err := db.QueryRowContext(context.Background(), "EXEC sp_ApDungVoucherVaoGioHang @ma_khach_hang=@p1, @ma_code=@p2",
-		sql.Named("p1", i.MaKhachHang), sql.Named("p2", i.MaCode)).Scan(&discount, &eligible)
-	if err != nil { sendError(w, 500, err.Error()); return }
+		sql.Named("p1", uid), sql.Named("p2", i.MaCode)).Scan(&discount, &eligible)
+
+    if err != nil { 
+        if strings.Contains(err.Error(), "50099") { sendError(w, 403, "Guests cannot use member vouchers."); return }
+        sendError(w, 500, err.Error()); return
+	}
+
+
+
 	sendSuccess(w, "Voucher Applied", map[string]float64{"discount_amount": discount, "eligible_total": eligible})
 }
 
@@ -833,9 +859,15 @@ func add_rating(w http.ResponseWriter, r *http.Request) {
 	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
 	var input RatingInput
 	if json.NewDecoder(r.Body).Decode(&input) != nil { sendError(w, 400, "Bad JSON"); return }
+
 	_, err := db.ExecContext(context.Background(), "EXEC sp_ThemDanhGia @ma_sach=@p1, @ma_khach_hang=@p2, @so_sao=@p3, @noi_dung=@p4",
 		sql.Named("p1", input.MaSach), sql.Named("p2", uid), sql.Named("p3", input.SoSao), sql.Named("p4", input.NoiDung))
-	if err != nil { sendError(w, 500, err.Error()); return }
+
+    if err != nil {
+        if strings.Contains(err.Error(), "50099") { sendError(w, 403, "Guests cannot rate books."); return }
+        sendError(w, 500, err.Error()); return 
+	}
+
 	sendSuccess(w, "Rating Added", nil)
 }
 
@@ -917,15 +949,6 @@ func get_books_by_category(w http.ResponseWriter, r *http.Request) {
 // ###############################################
 // ## 35. ADMIN: GET ALL ORDERS (To Manage) ######
 // ###############################################
-type AdminOrderRow struct {
-	MaDon       int     `json:"ma_don"`
-	KhachHang   string  `json:"khach_hang"`
-	NgayDat     string  `json:"ngay_dat"`
-	TongTien    float64 `json:"tong_tien"`
-	TrangThai   string  `json:"trang_thai"`
-	DiaChi      string  `json:"dia_chi"`
-}
-
 func admin_get_all_orders(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
 	if !validate_admin_token(r) { sendError(w, 401, "Admin only"); return }
@@ -1009,22 +1032,22 @@ func admin_restock_book(w http.ResponseWriter, r *http.Request) {
 func create_guest_session(w http.ResponseWriter, r *http.Request) {
     if set_CORS_headers(w, r, 2) { return }
 
-    // 1. Generate Unique Session Token
     sessionToken := generate_session_id()
-
-    // 2. Call SQL
     var newID int
-    query := `EXEC sp_TaoSessionKhach @ma_session=@p1, @ma_khach_hang=@pOut OUTPUT`
     
+    // Database Call
+    query := `EXEC sp_TaoSessionKhach @ma_session=@p1, @ma_khach_hang=@pOut OUTPUT`
     _, err := db.ExecContext(context.Background(), query,
         sql.Named("p1", sessionToken),
         sql.Named("pOut", sql.Out{Dest: &newID}))
 
     if err != nil { sendError(w, 500, "Failed to create guest: "+err.Error()); return }
 
-    // 3. Return ID and Token
-    // Frontend should store 'guest_id' and 'guest_token' in LocalStorage
+    // [NEW] Generate JWT for the Guest so they can pass validate_token()
+    jwtToken := generate_token(newID)
+
     sendSuccess(w, "Guest Session Started", map[string]interface{}{
+        "token":         jwtToken,
         "customer_id":   newID,
         "session_token": sessionToken,
         "role":          "guest",

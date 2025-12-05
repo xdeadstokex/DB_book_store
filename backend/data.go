@@ -41,6 +41,7 @@ type BookDetail struct {
 	TenNXB          string  `json:"ten_nxb"`
 	DanhSachTacGia  *string `json:"danh_sach_tac_gia"`
 	DanhSachTheLoai *string `json:"danh_sach_the_loai"`
+	DoTuoi 			int		`json:"do_tuoi"`
 }
 
 type SearchResult struct {
@@ -86,7 +87,6 @@ type PriceUpdateInput struct {
 
 // --- CART & ORDER ---
 type CartActionInput struct {
-	MaKhachHang int `json:"customer_id"`
 	MaSach      int `json:"ma_sach"`
 	SoLuong     int `json:"so_luong"`
 }
@@ -108,6 +108,7 @@ type CartItem struct {
 }
 
 type OrderHistory struct {
+	STT       int     `json:"stt_don"`
 	MaDon     int     `json:"ma_don"`
 	NgayDat   string  `json:"ngay_dat"`
 	TongTien  float64 `json:"tong_tien"`
@@ -116,12 +117,10 @@ type OrderHistory struct {
 }
 
 type PaymentMethodInput struct {
-	MaKhachHang int    `json:"customer_id"`
 	HinhThuc    string `json:"hinh_thuc"` // "Visa" or "Shipper"
 }
 
 type ApplyVoucherInput struct {
-	MaKhachHang int    `json:"customer_id"`
 	MaCode      string `json:"voucher_code"`
 }
 
@@ -183,7 +182,6 @@ type AddressRecord struct {
 // --- RATING ---
 type RatingInput struct {
 	MaSach      int    `json:"ma_sach"`
-	MaKhachHang int    `json:"customer_id"`
 	SoSao       int    `json:"so_sao"`
 	NoiDung     string `json:"noi_dung"`
 }
@@ -196,3 +194,12 @@ type RatingRecord struct {
 	NgayDanhGia string `json:"ngay_danh_gia"`
 }
 
+// --- Admin ---
+type AdminOrderRow struct {
+	MaDon       int     `json:"ma_don"`
+	KhachHang   string  `json:"khach_hang"`
+	NgayDat     string  `json:"ngay_dat"`
+	TongTien    float64 `json:"tong_tien"`
+	TrangThai   string  `json:"trang_thai"`
+	DiaChi      string  `json:"dia_chi"`
+}
