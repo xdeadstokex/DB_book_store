@@ -84,6 +84,18 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    -- [FIX] GUARD CLAUSE: Explicitly Block Guests
+    -- Even if FK is disabled, this stops Guests from reviewing.
+    IF EXISTS (
+        SELECT 1 FROM inserted i
+        WHERE NOT EXISTS (SELECT 1 FROM thanh_vien tv WHERE tv.ma_khach_hang = i.ma_khach_hang)
+    )
+    BEGIN
+        RAISERROR(N'Chức năng đánh giá chỉ dành cho thành viên đăng ký.', 16, 1);
+        ROLLBACK TRANSACTION;
+        RETURN;
+    END
+
     -- 1. CHECK STARS (1-5)
     IF EXISTS (SELECT 1 FROM inserted WHERE so_sao < 1 OR so_sao > 5)
     BEGIN
@@ -92,9 +104,7 @@ BEGIN
         RETURN;
     END
 
-    -- 2. CHECK DUPLICATE REVIEWS (1 Review per Book per User)
-    -- We check if the count > 1 for any (ma_khach, ma_sach) pair currently in the table.
-    -- (Since this is AFTER INSERT, the new row is already in the table).
+    -- 2. CHECK DUPLICATE REVIEWS
     IF EXISTS (
         SELECT ma_khach_hang, ma_sach
         FROM danh_gia
@@ -104,13 +114,12 @@ BEGIN
         HAVING COUNT(*) > 1
     )
     BEGIN
-        RAISERROR(N'Bạn đã đánh giá sách này rồi. Vui lòng sửa đánh giá cũ thay vì tạo mới.', 16, 1);
+        RAISERROR(N'Bạn đã đánh giá sách này rồi.', 16, 1);
         ROLLBACK TRANSACTION;
         RETURN;
     END
 
-    -- 3. CHECK PURCHASE & DELIVERY (Using Helper Function)
-    -- We join 'inserted' with our logic to find any invalid rows.
+    -- 3. CHECK PURCHASE & DELIVERY
     IF EXISTS (
         SELECT 1 
         FROM inserted i
@@ -121,14 +130,7 @@ BEGIN
         ROLLBACK TRANSACTION;
         RETURN;
     END
-    
-    -- Note: "Non-Member" check is handled automatically by the Foreign Key 
-    -- on the table (ma_khach_hang references thanh_vien). 
-    -- If a non-member tries to insert, the DB engine throws a FK error before this trigger fires.
 END;
-GO
-
-USE book_store;
 GO
 
 -- ======================================================
@@ -525,7 +527,15 @@ BEGIN
         -- If a voucher was applied
         IF @MaVoucher IS NOT NULL
         BEGIN
-            -- Check if user still has quantity (Double check to prevent race condition)
+            -- [FIX] GUARD CLAUSE: Strict Check for Guests
+            IF NOT EXISTS (SELECT 1 FROM thanh_vien WHERE ma_khach_hang = @MaKhach)
+            BEGIN
+                RAISERROR(N'Lỗi dữ liệu: Khách chưa là member không được phép sử dụng voucher.', 16, 1);
+                ROLLBACK TRANSACTION;
+                RETURN;
+            END
+
+            -- Check if user still has quantity
             DECLARE @Qty INT;
             SELECT @Qty = so_luong FROM voucher_thanh_vien WHERE ma_voucher = @MaVoucher AND ma_khach_hang = @MaKhach;
             

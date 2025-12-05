@@ -10,20 +10,10 @@ AS
 RETURN
 (
     SELECT 
-        s.ma_sach,
-        s.ten_sach,
-        s.gia_hien_tai,
-        s.so_sao_trung_binh,
-        s.ten_nguoi_dich,
-        s.mo_ta,
-        s.hinh_thuc,
-        s.so_trang,
-        s.nam_xuat_ban,
-        s.ngay_du_kien_phat_hanh,
-        
+        s.ma_sach, s.ten_sach, s.gia_hien_tai, s.so_sao_trung_binh, s.ten_nguoi_dich,
+        s.mo_ta, s.hinh_thuc, s.so_trang, s.nam_xuat_ban, s.ngay_du_kien_phat_hanh, s.do_tuoi,
         -- Publisher Name
         nxb.ten_nxb,
-        
         -- Combine Authors into one string: "Nam Cao, To Hoai"
         (
             SELECT STRING_AGG(tg.ten_tg, ', ') 
@@ -54,12 +44,7 @@ RETURNS TABLE
 AS
 RETURN
 (
-    SELECT 
-        s.ma_sach, 
-        s.ten_sach, 
-        s.nam_xuat_ban, 
-        s.so_trang, 
-        s.gia_hien_tai
+    SELECT s.ma_sach, s.ten_sach, s.nam_xuat_ban, s.so_trang, s.gia_hien_tai
     FROM sach s
     JOIN sach_the_loai stl ON s.ma_sach = stl.ma_sach
     WHERE stl.ma_tl = @MaTheLoai
@@ -75,12 +60,7 @@ RETURNS TABLE
 AS
 RETURN
 (
-    SELECT 
-        s.ma_sach, 
-        s.ten_sach, 
-        s.nam_xuat_ban, 
-        s.so_trang, 
-        s.gia_hien_tai
+    SELECT s.ma_sach, s.ten_sach, s.nam_xuat_ban, s.so_trang, s.gia_hien_tai
     FROM sach s
     JOIN sach_tac_gia stg ON s.ma_sach = stg.ma_sach
     WHERE stg.ma_tg = @MaTacGia
@@ -89,9 +69,8 @@ RETURN
 GO
 
 -- ======================================================
--- 2. FUNCTION: Get All Previous Orders
--- Returns: History of Orders (Confirmed or Cancelled)
--- Excludes: Current Active Cart
+-- 2. FUNCTION: Get All Previous Orders (Updated)
+-- Returns: History with "Customer Order Number" (STT)
 -- ======================================================
 CREATE OR ALTER FUNCTION fn_LayTatCaDonHang (@MaKhachHang INT)
 RETURNS TABLE
@@ -99,10 +78,12 @@ AS
 RETURN
 (
     SELECT 
+        -- Calculates 1, 2, 3... based on purchase date (Oldest = 1)
+        ROW_NUMBER() OVER (ORDER BY thoi_diem_dat_hang ASC) AS stt_don,
+        
         ma_don,
         thoi_diem_dat_hang,
         tong_tien_thanh_toan,
-        -- Human Readable Status
         CASE 
             WHEN da_huy = 1 THEN N'Đã hủy'
             WHEN da_giao_hang = 1 THEN N'Đã giao'
