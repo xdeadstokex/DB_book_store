@@ -730,9 +730,9 @@ END;
 GO
 
 -- ======================================================
--- 2. [NEW] ADVANCED SEARCH (Assignment Req 2.3a)
--- Logic: Search by Name (Required) + Author/Type (Optional)
---        Uses JOINs and WHERE clauses as requested.
+-- ADVANCED SEARCH
+-- Logic: Filter Main Table first. 
+--        Check Author/Category existence in subqueries.
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_TimKiemSach_NangCao
     @ten_sach NVARCHAR(200),           -- REQUIRED
@@ -742,13 +742,16 @@ AS
 BEGIN
     SET NOCOUNT ON;
 
+    -- 1. Validate Required Input
     IF @ten_sach IS NULL OR LTRIM(RTRIM(@ten_sach)) = ''
     BEGIN
         RAISERROR(N'Tên sách không được để trống.', 16, 1);
         RETURN;
     END
 
-    SELECT DISTINCT
+    -- 2. Execute Search
+    -- Note: We removed DISTINCT because we are not joining the many-to-many tables directly.
+    SELECT 
         s.ma_sach,
         s.ten_sach,
         s.gia_hien_tai,
@@ -758,16 +761,28 @@ BEGIN
         s.hinh_thuc
     FROM sach s
     JOIN nha_xuat_ban nxb ON s.ma_nxb = nxb.ma_nxb
-    -- Left Joins for Optional Filters
-    LEFT JOIN sach_tac_gia stg ON s.ma_sach = stg.ma_sach
-    LEFT JOIN tac_gia tg ON stg.ma_tg = tg.ma_tg
-    LEFT JOIN sach_the_loai stl ON s.ma_sach = stl.ma_sach
-    LEFT JOIN the_loai tl ON stl.ma_tl = tl.ma_tl
     WHERE 
         s.da_xoa = 0
+        -- A. Name Match (Required)
         AND s.ten_sach LIKE N'%' + @ten_sach + N'%'
-        AND (@ten_tac_gia IS NULL OR tg.ten_tg LIKE N'%' + @ten_tac_gia + N'%')
-        AND (@ten_the_loai IS NULL OR tl.ten_tl LIKE N'%' + @ten_the_loai + N'%')
+        
+        -- B. Author Match (Optional - Check Existence)
+        AND (@ten_tac_gia IS NULL OR EXISTS (
+            SELECT 1 
+            FROM sach_tac_gia stg
+            JOIN tac_gia tg ON stg.ma_tg = tg.ma_tg
+            WHERE stg.ma_sach = s.ma_sach 
+              AND tg.ten_tg LIKE N'%' + @ten_tac_gia + N'%'
+        ))
+        
+        -- C. Category Match (Optional - Check Existence)
+        AND (@ten_the_loai IS NULL OR EXISTS (
+            SELECT 1 
+            FROM sach_the_loai stl
+            JOIN the_loai tl ON stl.ma_tl = tl.ma_tl
+            WHERE stl.ma_sach = s.ma_sach 
+              AND tl.ten_tl LIKE N'%' + @ten_the_loai + N'%'
+        ))
     ORDER BY s.gia_hien_tai DESC;
 END;
 GO
