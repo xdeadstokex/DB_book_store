@@ -254,8 +254,12 @@ END;
 GO
 
 -- ======================================================
--- 2. PROCEDURE: sp_ThemDanhGia (OPTIMIZED)
--- Now it is just a dumb wrapper. The Triggers do ALL the work.
+-- PROCEDURE: Add OR Update Rating (Upsert)
+-- Logic: 
+--   1. Check if user already reviewed this book.
+--   2. If YES -> UPDATE the existing row (Stars, Content, Date).
+--   3. If NO  -> INSERT a new row.
+--   4. Triggers will still run to calculate average stars.
 -- ======================================================
 CREATE OR ALTER PROCEDURE sp_ThemDanhGia
     @ma_sach INT,
@@ -265,12 +269,23 @@ CREATE OR ALTER PROCEDURE sp_ThemDanhGia
 AS
 BEGIN
     SET NOCOUNT ON;
-    -- No validations here. 
-    -- trg_KiemTraHopLe_DanhGia handles rules (1-5 stars, bought check).
-    -- trg_TuDongTinhToan_Rating handles math.
-    
-    INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung, ngay_danh_gia)
-    VALUES (@ma_sach, @ma_khach_hang, @so_sao, @noi_dung, GETDATE());
+
+    -- Check if a review already exists for this User + Book
+    IF EXISTS (SELECT 1 FROM danh_gia WHERE ma_sach = @ma_sach AND ma_khach_hang = @ma_khach_hang)
+    BEGIN
+        -- [UPDATE] Overwrite the old review
+        UPDATE danh_gia
+        SET so_sao = @so_sao,
+            noi_dung = @noi_dung,
+            ngay_danh_gia = GETDATE() -- Refresh the timestamp
+        WHERE ma_sach = @ma_sach AND ma_khach_hang = @ma_khach_hang;
+    END
+    ELSE
+    BEGIN
+        -- [INSERT] Create new review
+        INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung, ngay_danh_gia)
+        VALUES (@ma_sach, @ma_khach_hang, @so_sao, @noi_dung, GETDATE());
+    END
 END;
 GO
 

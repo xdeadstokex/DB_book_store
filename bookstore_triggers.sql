@@ -527,10 +527,10 @@ BEGIN
         -- If a voucher was applied
         IF @MaVoucher IS NOT NULL
         BEGIN
-            -- [FIX] GUARD CLAUSE: Strict Check for Guests
+            -- Check if customer is a member (guests cannot use vouchers)
             IF NOT EXISTS (SELECT 1 FROM thanh_vien WHERE ma_khach_hang = @MaKhach)
             BEGIN
-                RAISERROR(N'Lỗi dữ liệu: Khách chưa là member không được phép sử dụng voucher.', 16, 1);
+                RAISERROR(N'Guests cannot use vouchers. Register to unlock this feature.', 16, 1);
                 ROLLBACK TRANSACTION;
                 RETURN;
             END
@@ -551,6 +551,7 @@ BEGIN
             SET so_luong = so_luong - 1
             WHERE ma_voucher = @MaVoucher AND ma_khach_hang = @MaKhach;
         END
+        -- If @MaVoucher IS NULL, skip all voucher checks (allow guests to checkout)
     END
 END;
 GO
