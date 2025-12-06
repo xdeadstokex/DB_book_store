@@ -188,7 +188,8 @@ func handle_apis() {
 	http.HandleFunc("/change_book_price", change_book_price)
 	http.HandleFunc("/delete_book", delete_book)
 	http.HandleFunc("/search_books", search_books)
-
+	http.HandleFunc("/get_book_sold_qty", get_book_sold_qty)
+	
 	// Cart & Checkout
 	http.HandleFunc("/add_to_cart", add_to_cart)
 	http.HandleFunc("/remove_from_cart", remove_from_cart)
@@ -224,7 +225,9 @@ func handle_apis() {
 	// Misc
 	http.HandleFunc("/get_nxb_by_id", get_nxb_by_id)
 	http.HandleFunc("/get_price_by_id", get_price_by_id)
-	
+	http.HandleFunc("/get_all_categories", get_all_categories)
+	http.HandleFunc("/get_all_authors", get_all_authors)
+
 	// Ratings
 	http.HandleFunc("/add_rating", add_rating)
 	http.HandleFunc("/get_ratings_by_book", get_ratings_by_book)
@@ -242,24 +245,41 @@ func handle_apis() {
 	http.HandleFunc("/create_guest_session", create_guest_session)
 }
 
-//######################
-//## 1. GET ALL BOOKS ##
-//######################
+// ######################
+// ## 1. GET ALL BOOKS ##
+// ######################
 func get_all_books(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
-	query := "SELECT ma_sach, ten_sach, nam_xuat_ban, so_trang, gia_hien_tai FROM sach WHERE da_xoa = 0"
+
+	// [UPDATED] Added 'so_sao_trung_binh' to SELECT
+	query := "SELECT ma_sach, ten_sach, nam_xuat_ban, so_trang, gia_hien_tai, so_sao_trung_binh FROM sach WHERE da_xoa = 0"
+	
 	rows, err := db.Query(query)
 	if err != nil { sendError(w, 500, err.Error()); return }
 	defer rows.Close()
 
 	var books []Book
 	for rows.Next() {
-		var b Book; var nNam, nPage sql.NullInt64; var nPrice sql.NullFloat64
-		if err := rows.Scan(&b.MaSach, &b.TenSach, &nNam, &nPage, &nPrice); err != nil { continue }
-		b.NamXuatBan = nullToInt(nNam); b.SoTrang = nullToInt(nPage); b.GiaHienTai = nullToFloat(nPrice)
+		var b Book
+		var nNam, nPage sql.NullInt64
+		var nPrice, nStar sql.NullFloat64
+
+		// [UPDATED] Added &nStar to Scan
+		if err := rows.Scan(&b.MaSach, &b.TenSach, &nNam, &nPage, &nPrice, &nStar); err != nil { continue }
+
+		b.NamXuatBan = nullToInt(nNam)
+		b.SoTrang = nullToInt(nPage)
+		
+		b.GiaHienTai = nullToFloat(nPrice)
 		if b.GiaHienTai == -1 { b.GiaHienTai = 0 }
+
+		// Handle Null Star (Default to 0)
+		b.SoSaoTrungBinh = nullToFloat(nStar)
+		if b.SoSaoTrungBinh == -1 { b.SoSaoTrungBinh = 0 }
+
 		books = append(books, b)
 	}
+	
 	if books == nil { books = []Book{} }
 	json.NewEncoder(w).Encode(books)
 }
@@ -272,13 +292,35 @@ func get_book_by_id(w http.ResponseWriter, r *http.Request) {
 	id := get_id_from_url(r, w); if id == -1 { return }
 
 	var b BookDetail
+	
+	// [FIX] Use Null types for data that might be NULL in DB
+	var rawAuthors, rawCategories sql.NullString
+	var nStar sql.NullFloat64 
+	
 	err := db.QueryRow("SELECT * FROM fn_LayChiTietSach(@p1)", sql.Named("p1", id)).Scan(
-		&b.MaSach, &b.TenSach, &b.GiaHienTai, &b.SoSaoTrungBinh, &b.TenNguoiDich,
-		&b.MoTa, &b.HinhThuc, &b.SoTrang, &b.NamXuatBan, &b.NgayPhatHanh,
-		&b.DoTuoi, &b.TenNXB, &b.DanhSachTacGia, &b.DanhSachTheLoai)
+		&b.MaSach, &b.TenSach, &b.GiaHienTai, &nStar, // <--- Scan into nStar, NOT b.SoSaoTrungBinh
+		&b.TenNguoiDich, &b.MoTa, &b.HinhThuc, &b.SoTrang, &b.NamXuatBan, &b.NgayPhatHanh, &b.DoTuoi,
+		&b.NhaXuatBan.ID, &b.NhaXuatBan.Name, 
+		&rawAuthors, &rawCategories)
 
 	if err == sql.ErrNoRows { sendError(w, 404, "Book Not Found"); return }
 	if err != nil { sendError(w, 500, err.Error()); return }
+
+	// [FIX] Assign value if valid, otherwise it stays 0
+	if nStar.Valid { b.SoSaoTrungBinh = nStar.Float64 }
+
+	if rawAuthors.Valid {
+		json.Unmarshal([]byte(rawAuthors.String), &b.ListTacGia)
+	} else {
+		b.ListTacGia = []IdName{}
+	}
+
+	if rawCategories.Valid {
+		json.Unmarshal([]byte(rawCategories.String), &b.ListTheLoai)
+	} else {
+		b.ListTheLoai = []IdName{}
+	}
+
 	json.NewEncoder(w).Encode(b)
 }
 
@@ -367,12 +409,11 @@ func delete_book(w http.ResponseWriter, r *http.Request) {
 	sendSuccess(w, "Book Soft Deleted", nil)
 }
 
-//#############################################
-//## 7. SEARCH BOOKS (Name*, Author, Type) ####
-//#############################################
+//############################################
+//## 7. SEARCH BOOKS (Name*, Author, Type) ###
+//############################################
 func search_books(w http.ResponseWriter, r *http.Request) {
 	if set_CORS_headers(w, r, 1) { return }
-
 	name := r.URL.Query().Get("name")
 	author := r.URL.Query().Get("author")
 	bType := r.URL.Query().Get("type")
@@ -380,8 +421,8 @@ func search_books(w http.ResponseWriter, r *http.Request) {
 	if name == "" { sendError(w, 400, "Missing required parameter: name"); return }
 
 	var sAuthor, sType sql.NullString
-	if author != "" { sAuthor = sql.NullString{String: author, Valid: true} }
-	if bType != "" { sType = sql.NullString{String: bType, Valid: true} }
+	if strings.TrimSpace(author) != "" { sAuthor = sql.NullString{String: author, Valid: true} }
+	if strings.TrimSpace(bType) != "" { sType = sql.NullString{String: bType, Valid: true} }
 
 	rows, err := db.Query("EXEC sp_TimKiemSach_NangCao @ten_sach=@p1, @ten_tac_gia=@p2, @ten_the_loai=@p3",
 		sql.Named("p1", name), sql.Named("p2", sAuthor), sql.Named("p3", sType))
@@ -393,8 +434,12 @@ func search_books(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var b SearchResult
 		var nHinh sql.NullString
-		if err := rows.Scan(&b.MaSach, &b.TenSach, &b.GiaHienTai, &b.SoSaoTrungBinh, &b.TenNXB, &b.NamXuatBan, &nHinh); err == nil {
+		var nStar sql.NullFloat64 // [FIX] Handle NULL rating
+
+		// [FIX] Scan into nStar
+		if err := rows.Scan(&b.MaSach, &b.TenSach, &b.GiaHienTai, &nStar, &b.TenNXB, &b.NamXuatBan, &nHinh); err == nil {
 			if nHinh.Valid { b.HinhThuc = &nHinh.String }
+			if nStar.Valid { b.SoSaoTrungBinh = nStar.Float64 } // [FIX] Assign
 			results = append(results, b)
 		}
 	}
@@ -464,8 +509,10 @@ func get_current_cart(w http.ResponseWriter, r *http.Request) {
 	uid := validate_token(r); if uid == 0 { sendError(w, 401, "Unauthorized"); return }
 
 	var h CartHeader
-	err := db.QueryRow("SELECT * FROM fn_LayGioHangHienTai(@p1)", sql.Named("p1", uid)).Scan(
-		&h.MaDon, &h.NgayTao, &h.TongTien, &h.TongSoLuong)
+	var discount sql.NullFloat64
+	
+	err := db.QueryRow("SELECT dh.ma_don, dh.thoi_diem_tao_gio_hang, dh.tong_tien_thanh_toan, COUNT(ct.ma_sach), dh.gia_tri_giam_gia FROM don_hang dh LEFT JOIN chi_tiet_don_hang ct ON dh.ma_don = ct.ma_don WHERE dh.ma_khach_hang = @p1 AND dh.da_dat_hang = 0 GROUP BY dh.ma_don, dh.thoi_diem_tao_gio_hang, dh.tong_tien_thanh_toan, dh.gia_tri_giam_gia", 
+		sql.Named("p1", uid)).Scan(&h.MaDon, &h.NgayTao, &h.TongTien, &h.TongSoLuong, &discount)
 	
 	if err == sql.ErrNoRows { sendSuccess(w, "Cart Empty", nil); return }
 	if err != nil { sendError(w, 500, err.Error()); return }
@@ -491,8 +538,14 @@ func get_current_cart(w http.ResponseWriter, r *http.Request) {
 	if items == nil { items = []CartItem{} }
 	if warnings == nil { warnings = []string{} }
 
+	discountValue := 0.0
+	if discount.Valid { discountValue = discount.Float64 }
+
 	sendSuccess(w, "Current Cart", map[string]interface{}{
-		"header": h, "items": items, "warnings": warnings,
+		"header": h, 
+		"items": items, 
+		"warnings": warnings,
+		"discount": discountValue,
 	})
 }
 
@@ -1052,4 +1105,77 @@ func create_guest_session(w http.ResponseWriter, r *http.Request) {
         "session_token": sessionToken,
         "role":          "guest",
     })
+}
+
+// ###################################
+// ## 39. GET ALL CATEGORIES (Menu) ##
+// ###################################
+func get_all_categories(w http.ResponseWriter, r *http.Request) {
+	if set_CORS_headers(w, r, 1) { return }
+
+	rows, err := db.Query("SELECT ma_tl, ten_tl FROM the_loai ORDER BY ten_tl ASC")
+	if err != nil { sendError(w, 500, err.Error()); return }
+	defer rows.Close()
+
+	// Reuse existing IdName struct
+	var list []IdName
+	for rows.Next() {
+		var i IdName
+		if err := rows.Scan(&i.ID, &i.Name); err == nil {
+			list = append(list, i)
+		}
+	}
+	
+	if list == nil { list = []IdName{} }
+	json.NewEncoder(w).Encode(list)
+}
+
+// ###############################
+// ## 40. GET ALL AUTHORS (Menu) #
+// ###############################
+func get_all_authors(w http.ResponseWriter, r *http.Request) {
+	if set_CORS_headers(w, r, 1) { return }
+
+	// Select ID and Name from Author table
+	rows, err := db.Query("SELECT ma_tg, ten_tg FROM tac_gia ORDER BY ten_tg ASC")
+	if err != nil { sendError(w, 500, err.Error()); return }
+	defer rows.Close()
+
+	var list []IdName
+	for rows.Next() {
+		var i IdName
+		if err := rows.Scan(&i.ID, &i.Name); err == nil {
+			list = append(list, i)
+		}
+	}
+	
+	if list == nil { list = []IdName{} }
+	json.NewEncoder(w).Encode(list)
+}
+
+// ###################################
+// ## 41. GET BOOK SOLD QUANTITY #####
+// ###################################
+func get_book_sold_qty(w http.ResponseWriter, r *http.Request) {
+	if set_CORS_headers(w, r, 1) { return }
+	id := get_id_from_url(r, w); if id == -1 { return }
+
+	// Logic: Sum quantity from details linked to CONFIRMED and NOT CANCELLED orders
+	query := `
+		SELECT ISNULL(SUM(ct.so_luong), 0)
+		FROM chi_tiet_don_hang ct
+		JOIN don_hang dh ON ct.ma_don = dh.ma_don
+		WHERE ct.ma_sach = @p1
+		  AND dh.da_dat_hang = 1 
+		  AND dh.da_huy = 0`
+
+	var soldQty int
+	err := db.QueryRow(query, sql.Named("p1", id)).Scan(&soldQty)
+	
+	if err != nil { sendError(w, 500, err.Error()); return }
+
+	// Direct JSON output: {"tong_da_ban": 120}
+	json.NewEncoder(w).Encode(map[string]int{
+		"tong_da_ban": soldQty,
+	})
 }

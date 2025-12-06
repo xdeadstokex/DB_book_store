@@ -20,28 +20,34 @@ type PriceRecord struct {
 }
 
 type Book struct {
-	MaSach     int     `json:"ma_sach"`
-	TenSach    string  `json:"ten_sach"`
-	NamXuatBan int     `json:"nam_xuat_ban"`
-	SoTrang    int     `json:"so_trang"`
-	GiaHienTai float64 `json:"gia_hien_tai"`
+	MaSach         int     `json:"ma_sach"`
+	TenSach        string  `json:"ten_sach"`
+	NamXuatBan     int     `json:"nam_xuat_ban"`
+	SoTrang        int     `json:"so_trang"`
+	GiaHienTai     float64 `json:"gia_hien_tai"`
+	SoSaoTrungBinh float64 `json:"so_sao_trung_binh"`
+}
+
+type IdName struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
 }
 
 type BookDetail struct {
-	MaSach          int     `json:"ma_sach"`
-	TenSach         string  `json:"ten_sach"`
-	GiaHienTai      float64 `json:"gia_hien_tai"`
-	SoSaoTrungBinh  float64 `json:"so_sao_trung_binh"`
-	TenNguoiDich    *string `json:"ten_nguoi_dich"`
-	MoTa            *string `json:"mo_ta"`
-	HinhThuc        *string `json:"hinh_thuc"`
-	SoTrang         int     `json:"so_trang"`
-	NamXuatBan      int     `json:"nam_xuat_ban"`
-	NgayPhatHanh    *string `json:"ngay_phat_hanh"`
-	TenNXB          string  `json:"ten_nxb"`
-	DanhSachTacGia  *string `json:"danh_sach_tac_gia"`
-	DanhSachTheLoai *string `json:"danh_sach_the_loai"`
-	DoTuoi 			int		`json:"do_tuoi"`
+	MaSach          int       `json:"ma_sach"`
+	TenSach         string    `json:"ten_sach"`
+	GiaHienTai      float64   `json:"gia_hien_tai"`
+	SoSaoTrungBinh  float64   `json:"so_sao_trung_binh"`
+	TenNguoiDich    *string   `json:"ten_nguoi_dich"`
+	MoTa            *string   `json:"mo_ta"`
+	HinhThuc        *string   `json:"hinh_thuc"`
+	SoTrang         int       `json:"so_trang"`
+	NamXuatBan      int       `json:"nam_xuat_ban"`
+	NgayPhatHanh    *string   `json:"ngay_phat_hanh"`
+	DoTuoi          *int      `json:"do_tuoi"`
+	NhaXuatBan      IdName    `json:"nha_xuat_ban"`
+	ListTacGia      []IdName  `json:"danh_sach_tac_gia"`
+	ListTheLoai     []IdName  `json:"danh_sach_the_loai"`
 }
 
 type SearchResult struct {
