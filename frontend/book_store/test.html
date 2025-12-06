@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>API Test Panel</title>
+    <style>
+        body { display: flex; font-family: monospace; margin: 0; height: 100vh; overflow: hidden; }
+        #controls { width: 40%; background: #eee; padding: 20px; overflow-y: auto; border-right: 2px solid #ccc; }
+        #output-panel { width: 60%; background: #222; color: #0f0; padding: 20px; overflow-y: auto; }
+        h3 { border-bottom: 2px solid #888; padding-bottom: 5px; margin-top: 20px; }
+        button { display: block; width: 100%; margin: 5px 0; padding: 8px; cursor: pointer; text-align: left; background: #fff; border: 1px solid #aaa; }
+        button:hover { background: #ddd; }
+        .btn-red { border-left: 5px solid red; }
+        .btn-blue { border-left: 5px solid blue; }
+        .btn-green { border-left: 5px solid green; }
+        pre { white-space: pre-wrap; word-wrap: break-word; }
+    </style>
+</head>
+<body>
+
+    <div id="controls">
+        <h2>API CONTROLS</h2>
+        <div id="token-display" style="font-size: 0.8rem; word-break: break-all; margin-bottom: 10px; color: #555;">Token: (None)</div>
+        <button onclick="clearToken()" style="background:#ffcccc">CLEAR TOKEN</button>
+
+        <h3>1. Books</h3>
+        <button class="btn-blue" onclick="run(() => API.call_get_books())">Get All Books</button>
+        
+        <button class="btn-blue" onclick="run(async () => {
+            const id = prompt('Book ID?');
+            if(!id) return 'Cancelled';
+            const res = await API.call_get_book(id);
+            
+            // Client-side flatten for display
+            const nxbID = res.nha_xuat_ban ? res.nha_xuat_ban.id : 'N/A';
+            const header = `--- QUICK REF ---\nMaSach: ${res.ma_sach}\nMaNXB:  ${nxbID}\n-----------------`;
+            
+            return header + '\n' + JSON.stringify(res, null, 2);
+        })">Get Book By ID (Formatted)</button>
+        
+        <button class="btn-blue" onclick="run(() => API.call_search(prompt('Name?'), prompt('Author (opt)'), prompt('Type (opt)')))">Search Books</button>
+        <button class="btn-blue" onclick="run(() => API.call_books_by_author(prompt('Author ID?')))">Get By Author</button>
+        <button class="btn-blue" onclick="run(() => API.call_books_by_category(prompt('Category ID?')))">Get By Category</button>
+
+        <h3>2. Cart & Order</h3>
+        <button class="btn-green" onclick="run(() => API.call_get_cart())">Get Current Cart</button>
+        <button class="btn-green" onclick="run(() => API.call_add_cart(prompt('Book ID?'), prompt('Qty?', 1)))">Add To Cart</button>
+        <button class="btn-green" onclick="run(() => API.call_remove_cart(prompt('Book ID?')))">Remove From Cart</button>
+        <button class="btn-green" onclick="run(() => API.call_update_cart(prompt('Book ID?'), prompt('Qty?')))">Update Cart Qty</button>
+        <button class="btn-green" onclick="run(() => API.call_checkout(prompt('Cart ID (from header)?')))">Checkout</button>
+        <button class="btn-green" onclick="run(() => API.call_order_history())">Order History</button>
+        <button class="btn-green" onclick="run(() => API.call_order_detail(prompt('Order ID?')))">Order Detail</button>
+        <button class="btn-green" onclick="run(() => API.call_cancel_order(prompt('Order ID?')))">Cancel Order</button>
+
+        <h3>3. Auth & Member</h3>
+        <button onclick="testLogin()">Login (Prompt User/Pass)</button>
+        <button onclick="testRegister()">Register (Dummy Data)</button>
+        <button onclick="run(() => API.call_guest())">Create Guest Session</button>
+        <button onclick="run(() => API.call_me())">Get Member Info</button>
+
+        <h3>4. Address & Payment</h3>
+        <button onclick="run(() => API.call_get_addr())">Get My Addresses</button>
+        <button onclick="testAddAddr()">Add Address (Dummy)</button>
+        <button onclick="run(() => API.call_set_addr(prompt('Address ID?')))">Set Shipping Addr</button>
+        <button onclick="run(() => API.call_set_payment(prompt('Method? (Visa/Shipper)')))">Set Payment Method</button>
+        <button onclick="run(() => API.call_get_last_pay())">Get Last Payment</button>
+
+        <h3>5. Vouchers</h3>
+        <button onclick="run(() => API.call_my_vouchers())">Get My Vouchers</button>
+        <button onclick="run(() => API.call_apply_voucher(prompt('Voucher Code?')))">Apply Voucher</button>
+        <button onclick="run(() => API.call_best_voucher())">Find Best Voucher</button>
+
+        <h3>6. Ratings & Misc</h3>
+        <button onclick="run(() => API.call_get_nxb(prompt('NXB ID?')))">Get NXB</button>
+        <button onclick="run(() => API.call_get_price(prompt('Price ID?')))">Get Price Info</button>
+        <button onclick="run(() => API.call_get_ratings(prompt('Book ID?')))">Get Book Ratings</button>
+        <button onclick="run(() => API.call_add_rating(prompt('Book ID?'), prompt('Stars (1-5)?'), prompt('Comment?')))">Add Rating</button>
+
+        <h3>7. Admin (Need Admin Token)</h3>
+        <button class="btn-red" onclick="testAdminAddBook()">Add Book (Dummy)</button>
+        <button class="btn-red" onclick="testAdminUpdateBook()">Update Book (Dummy)</button>
+        <button class="btn-red" onclick="run(() => API.call_admin_change_price(prompt('Book ID?'), prompt('New Price?')))">Change Price</button>
+        <button class="btn-red" onclick="run(() => API.call_admin_delete(prompt('Book ID?')))">Delete Book</button>
+        <button class="btn-red" onclick="run(() => API.call_admin_orders())">Get All Orders</button>
+        <button class="btn-red" onclick="run(() => API.call_admin_restock(prompt('Book ID?'), 1, prompt('Qty to add?')))">Restock</button>
+        <button class="btn-red" onclick="run(() => API.call_admin_deliver(prompt('Order ID?')))">Mark Delivered</button>
+    </div>
+
+    <div id="output-panel">
+        <h3>OUTPUT LOG</h3>
+        <pre id="log">Waiting for action...</pre>
+    </div>
+
+    <script src="api.js"></script>
+    <script>
+        const log = document.getElementById('log');
+        const tokenDisplay = document.getElementById('token-display');
+
+        function updateTokenUI() {
+            const t = localStorage.getItem('token');
+            tokenDisplay.innerText = t ? "Token: " + t.substring(0, 20) + "..." : "Token: (None)";
+        }
+        updateTokenUI();
+
+        function clearToken() {
+            localStorage.removeItem('token');
+            updateTokenUI();
+            print("Token Cleared from LocalStorage.");
+        }
+
+        function print(data) {
+            // If it's already a string (our custom formatted header), just print it
+            if (typeof data === 'string') {
+                log.innerText = data;
+                return;
+            }
+            // Otherwise stringify
+            log.innerText = JSON.stringify(data, null, 2);
+        }
+
+        async function run(apiFunc) {
+            log.innerText = "Requesting...";
+            try {
+                const res = await apiFunc();
+                print(res);
+                
+                // If response contains a token, save it
+                // Handle both raw response and wrapped {data: ...} response
+                let t = null;
+                if (res.token) t = res.token;
+                if (res.data && res.data.token) t = res.data.token;
+                
+                if (t) {
+                   localStorage.setItem('token', t);
+                   updateTokenUI(); 
+                }
+            } catch (err) {
+                print("ERROR:\n" + err.message);
+            }
+        }
+
+        // --- Wrappers for Complex Inputs ---
+
+        function testLogin() {
+            const u = prompt("Username", "admin");
+            const p = prompt("Password", "admin123");
+            if(u && p) run(() => API.call_login(u, p));
+        }
+
+        function testRegister() {
+            const r = Math.floor(Math.random() * 1000);
+            const data = {
+                ten_dang_nhap: "user" + r,
+                mat_khau: "123",
+                email: `user${r}@test.com`,
+                ho: "Test",
+                ho_ten_dem: "User",
+                sdt: "0123456789",
+                gioi_tinh: "Nam",
+                ngay_sinh: "2000-01-01"
+            };
+            if(confirm(`Register with dummy data?\n${JSON.stringify(data,null,2)}`)) {
+                run(() => API.call_register(data));
+            }
+        }
+
+        function testAddAddr() {
+            const data = {
+                thanh_pho: "HCM",
+                quan_huyen: "Q1",
+                phuong_xa: "Ben Nghe",
+                dia_chi_nha: "123 Le Loi"
+            };
+            run(() => API.call_add_addr(data));
+        }
+
+        function testAdminAddBook() {
+            const data = {
+                ten_sach: "New Test Book " + Date.now(),
+                nam_xuat_ban: 2025,
+                ma_nxb: 1, // Ensure NXB 1 exists
+                so_trang: 100,
+                ngon_ngu: "Vietnamese",
+                trong_luong: 500,
+                do_tuoi: 16,
+                hinh_thuc: "Bia Mem",
+                mo_ta: "Auto generated by test.html",
+                ten_nguoi_dich: "AI",
+                gia_ban: 50000
+            };
+            run(() => API.call_admin_add_book(data));
+        }
+
+        function testAdminUpdateBook() {
+            const id = prompt("Book ID to update?");
+            if(!id) return;
+            const data = {
+                ten_sach: "Updated Name " + Date.now()
+            };
+            run(() => API.call_admin_update_book(id, data));
+        }
+
+    </script>
+</body>
+</html>

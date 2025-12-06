@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BookStore Admin | God Mode</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = { darkMode: 'class' }
+    </script>
+    <style>
+        /* Custom Scrollbar for that raw dev feel */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a202c; }
+        ::-webkit-scrollbar-thumb { background: #4a5568; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #718096; }
+        .modal { transition: opacity 0.25s ease; }
+        body { background-color: #0f172a; color: #e2e8f0; }
+    </style>
+</head>
+<body class="h-screen flex overflow-hidden text-sm">
+
+    <aside class="w-64 bg-slate-900 border-r border-slate-800 flex flex-col">
+        <div class="h-16 flex items-center justify-center border-b border-slate-800">
+            <h1 class="text-xl font-bold text-emerald-400">ADMIN <span class="text-slate-500">DASH</span></h1>
+        </div>
+        <nav class="flex-1 p-4 space-y-2">
+            <button onclick="switchTab('books')" class="w-full flex items-center p-3 text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                <span class="font-semibold">📚 Book Management</span>
+            </button>
+            <button onclick="switchTab('orders')" class="w-full flex items-center p-3 text-slate-300 hover:bg-slate-800 rounded-lg transition-colors">
+                <span class="font-semibold">📦 Order Processing</span>
+            </button>
+        </nav>
+        <div class="p-4 border-t border-slate-800">
+            <button onclick="logout()" class="w-full py-2 px-4 bg-red-900/30 text-red-400 hover:bg-red-900/50 rounded border border-red-900 transition">
+                Clear Token
+            </button>
+        </div>
+    </aside>
+
+    <main class="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <header class="h-16 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-6">
+            <div id="status-indicator" class="flex items-center gap-2 text-xs text-emerald-500">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> System Online
+            </div>
+            <div class="text-slate-500 text-xs font-mono">Backend: localhost:4444</div>
+        </header>
+
+        <div class="flex-1 overflow-auto p-6 scroll-smooth">
+            
+            <div id="view-books" class="space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Inventory Control</h2>
+                    <button onclick="openModal('modal-add-book')" class="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded shadow-lg shadow-emerald-900/50 transition">
+                        + Add New Book
+                    </button>
+                </div>
+
+                <div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-900 text-slate-400 font-mono text-xs uppercase">
+                            <tr>
+                                <th class="p-4 w-16">ID</th>
+                                <th class="p-4">Title</th>
+                                <th class="p-4">Year</th>
+                                <th class="p-4">Price</th>
+                                <th class="p-4">Rating</th>
+                                <th class="p-4 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="book-list" class="divide-y divide-slate-700 text-slate-300">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="view-orders" class="hidden space-y-6">
+                <div class="flex justify-between items-center">
+                    <h2 class="text-2xl font-bold">Order History</h2>
+                    <button onclick="fetchOrders()" class="text-emerald-400 hover:text-emerald-300 text-xs uppercase font-bold tracking-wider">
+                        Refresh Data
+                    </button>
+                </div>
+
+                <div class="bg-slate-800 rounded-lg border border-slate-700 overflow-hidden">
+                    <table class="w-full text-left">
+                        <thead class="bg-slate-900 text-slate-400 font-mono text-xs uppercase">
+                            <tr>
+                                <th class="p-4">Order #</th>
+                                <th class="p-4">Date</th>
+                                <th class="p-4">Customer</th>
+                                <th class="p-4">Total</th>
+                                <th class="p-4">Status</th>
+                                <th class="p-4">Address</th>
+                                <th class="p-4 text-right">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="order-list" class="divide-y divide-slate-700 text-slate-300">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="modal-login" class="fixed inset-0 bg-black/90 z-50 flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-slate-800 p-8 rounded-xl border border-slate-700 w-96 shadow-2xl">
+            <h3 class="text-xl font-bold mb-4 text-emerald-400">Admin Authentication</h3>
+            <p class="text-slate-400 text-xs mb-4">Check your Go terminal for the token.</p>
+            <input type="text" id="admin-token-input" placeholder="Paste Token String Here..." 
+                class="w-full bg-slate-900 border border-slate-700 rounded p-3 text-white focus:outline-none focus:border-emerald-500 mb-4 font-mono text-xs">
+            <button onclick="saveToken()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white py-2 rounded font-bold">
+                Authenticate
+            </button>
+        </div>
+    </div>
+
+    <div id="modal-add-book" class="modal hidden fixed inset-0 bg-black/80 z-40 flex items-center justify-center p-4">
+        <div class="bg-slate-800 rounded-xl border border-slate-700 w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div class="p-6 border-b border-slate-700 flex justify-between">
+                <h3 class="text-lg font-bold">Add New Book</h3>
+                <button onclick="closeModal('modal-add-book')" class="text-slate-400 hover:text-white">✕</button>
+            </div>
+            <form id="form-add-book" onsubmit="handleAddBook(event)" class="p-6 grid grid-cols-2 gap-4">
+                <input name="ten_sach" placeholder="Book Title" required class="col-span-2 bg-slate-900 border border-slate-700 p-2 rounded">
+                <input type="number" name="nam_xuat_ban" placeholder="Year (e.g. 2024)" required class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <select name="ma_nxb" required class="bg-slate-900 border border-slate-700 p-2 rounded text-slate-300">
+                    <option value="1">NXB Trẻ (1)</option>
+                    <option value="2">NXB Kim Đồng (2)</option>
+                    <option value="3">NXB Văn Học (3)</option>
+                    <option value="4">NXB Hội Nhà Văn (4)</option>
+                    <option value="5">NXB Nhã Nam (5)</option>
+                    <option value="6">NXB Tổng Hợp (6)</option>
+                </select>
+                <input type="number" name="so_trang" placeholder="Pages" required class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <input name="ngon_ngu" value="Tiếng Việt" placeholder="Language" required class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <input type="number" name="gia_ban" placeholder="Price (VNĐ)" required class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <input type="number" name="do_tuoi" placeholder="Age Rating" value="12" class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <input name="hinh_thuc" placeholder="Format (Bìa mềm/Bìa cứng)" value="Bìa mềm" class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <input name="ten_nguoi_dich" placeholder="Translator" class="bg-slate-900 border border-slate-700 p-2 rounded">
+                <textarea name="mo_ta" placeholder="Description" rows="3" class="col-span-2 bg-slate-900 border border-slate-700 p-2 rounded"></textarea>
+                <button type="submit" class="col-span-2 bg-emerald-600 hover:bg-emerald-500 py-2 rounded text-white font-bold mt-4">Create Book</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="modal-restock" class="modal hidden fixed inset-0 bg-black/80 z-40 flex items-center justify-center">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-96">
+            <h3 class="text-lg font-bold mb-4">Restock Inventory</h3>
+            <input type="hidden" id="restock-book-id">
+            <div class="mb-4">
+                <label class="text-xs text-slate-500 uppercase">Warehouse</label>
+                <select id="restock-warehouse" class="w-full bg-slate-900 border border-slate-700 p-2 rounded mt-1">
+                    <option value="1">Kho Tổng HCM (1)</option>
+                    <option value="2">Kho Tổng HN (2)</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label class="text-xs text-slate-500 uppercase">Quantity to Add</label>
+                <input type="number" id="restock-qty" class="w-full bg-slate-900 border border-slate-700 p-2 rounded mt-1">
+            </div>
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('modal-restock')" class="px-3 py-1 text-slate-400">Cancel</button>
+                <button onclick="submitRestock()" class="bg-emerald-600 text-white px-4 py-1 rounded">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-price" class="modal hidden fixed inset-0 bg-black/80 z-40 flex items-center justify-center">
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700 w-96">
+            <h3 class="text-lg font-bold mb-4">Update Price</h3>
+            <input type="hidden" id="price-book-id">
+            <input type="number" id="new-price-input" placeholder="New Price" class="w-full bg-slate-900 border border-slate-700 p-2 rounded mb-4">
+            <div class="flex justify-end gap-2">
+                <button onclick="closeModal('modal-price')" class="px-3 py-1 text-slate-400">Cancel</button>
+                <button onclick="submitPriceChange()" class="bg-blue-600 text-white px-4 py-1 rounded">Update</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:4444';
+        
+        // --- AUTH ---
+        function checkAuth() {
+            const token = localStorage.getItem('adminToken');
+            const modal = document.getElementById('modal-login');
+            if (token) {
+                modal.classList.add('hidden');
+                fetchBooks(); // Load initial data
+            } else {
+                modal.classList.remove('hidden');
+            }
+        }
+
+        function saveToken() {
+            const val = document.getElementById('admin-token-input').value.trim();
+            if(!val) return alert("Paste the token!");
+            localStorage.setItem('adminToken', val);
+            checkAuth();
+        }
+
+        function logout() {
+            localStorage.removeItem('adminToken');
+            location.reload();
+        }
+
+        async function api(endpoint, method = 'GET', body = null) {
+            const token = localStorage.getItem('adminToken');
+            const headers = { 
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            };
+            
+            const config = { method, headers };
+            if (body) config.body = JSON.stringify(body);
+
+            try {
+                const res = await fetch(API_URL + endpoint, config);
+                if (res.status === 401) {
+                    alert("Token expired or invalid.");
+                    logout();
+                    return null;
+                }
+                return await res.json();
+            } catch (e) {
+                console.error(e);
+                alert("Connection Error");
+                return null;
+            }
+        }
+
+        // --- TABS ---
+        function switchTab(tab) {
+            document.getElementById('view-books').classList.add('hidden');
+            document.getElementById('view-orders').classList.add('hidden');
+            document.getElementById('view-' + tab).classList.remove('hidden');
+            if(tab === 'orders') fetchOrders();
+        }
+
+        function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
+        function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
+
+        // --- BOOK LOGIC ---
+        async function fetchBooks() {
+            const data = await api('/get_all_books');
+            if (!data) return;
+            
+            const tbody = document.getElementById('book-list');
+            tbody.innerHTML = '';
+            
+            data.forEach(b => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-slate-800/50 transition";
+                tr.innerHTML = `
+                    <td class="p-4 font-mono text-slate-500">#${b.ma_sach}</td>
+                    <td class="p-4 font-bold text-white">${b.ten_sach}</td>
+                    <td class="p-4 text-slate-400">${b.nam_xuat_ban}</td>
+                    <td class="p-4 text-emerald-400 font-mono">${b.gia_hien_tai.toLocaleString()} đ</td>
+                    <td class="p-4 text-yellow-400">★ ${b.so_sao_trung_binh}</td>
+                    <td class="p-4 text-right space-x-2">
+                        <button onclick="prepRestock(${b.ma_sach})" class="px-2 py-1 bg-slate-700 text-xs rounded hover:bg-slate-600">Restock</button>
+                        <button onclick="prepPrice(${b.ma_sach})" class="px-2 py-1 bg-blue-900/50 text-blue-400 text-xs rounded border border-blue-900 hover:bg-blue-900">Price</button>
+                        <button onclick="deleteBook(${b.ma_sach})" class="px-2 py-1 bg-red-900/20 text-red-500 text-xs rounded border border-red-900/50 hover:bg-red-900/50">Del</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function handleAddBook(e) {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData.entries());
+            
+            // Type conversions for Go
+            data.nam_xuat_ban = parseInt(data.nam_xuat_ban);
+            data.ma_nxb = parseInt(data.ma_nxb);
+            data.so_trang = parseInt(data.so_trang);
+            data.gia_ban = parseFloat(data.gia_ban);
+            data.do_tuoi = parseInt(data.do_tuoi);
+            data.trong_luong = 500.0; // Default
+
+            const res = await api('/add_new_book', 'POST', data);
+            if(res && !res.error) {
+                closeModal('modal-add-book');
+                e.target.reset();
+                fetchBooks();
+            } else {
+                alert(res.error || "Failed");
+            }
+        }
+
+        async function deleteBook(id) {
+            if(!confirm("Are you sure? Soft delete only.")) return;
+            const res = await api(`/delete_book?id=${id}`, 'DELETE');
+            if(res && !res.error) fetchBooks();
+        }
+
+        // --- RESTOCK ---
+        function prepRestock(id) {
+            document.getElementById('restock-book-id').value = id;
+            openModal('modal-restock');
+        }
+
+        async function submitRestock() {
+            const id = parseInt(document.getElementById('restock-book-id').value);
+            const kho = parseInt(document.getElementById('restock-warehouse').value);
+            const qty = parseInt(document.getElementById('restock-qty').value);
+
+            if(qty <= 0) return alert("Qty > 0 please");
+
+            const res = await api('/admin/restock_book', 'POST', {
+                ma_sach: id, ma_kho: kho, so_luong_them: qty
+            });
+
+            if(res && !res.error) {
+                closeModal('modal-restock');
+                alert("Stock Updated");
+            } else {
+                alert(res.error);
+            }
+        }
+
+        // --- PRICE CHANGE ---
+        function prepPrice(id) {
+            document.getElementById('price-book-id').value = id;
+            openModal('modal-price');
+        }
+
+        async function submitPriceChange() {
+            const id = parseInt(document.getElementById('price-book-id').value);
+            const price = parseFloat(document.getElementById('new-price-input').value);
+            
+            const res = await api(`/change_book_price?id=${id}`, 'PUT', { gia_moi: price });
+            if(res && !res.error) {
+                closeModal('modal-price');
+                fetchBooks();
+            } else {
+                alert(res.error);
+            }
+        }
+
+        // --- ORDER LOGIC ---
+        async function fetchOrders() {
+            const data = await api('/admin/get_all_orders');
+            if (!data) return;
+
+            const tbody = document.getElementById('order-list');
+            tbody.innerHTML = '';
+
+            data.forEach(o => {
+                let statusColor = "text-slate-400";
+                if(o.trang_thai === 'Processing') statusColor = "text-yellow-500";
+                if(o.trang_thai === 'Delivered') statusColor = "text-emerald-500";
+                if(o.trang_thai === 'Cancelled') statusColor = "text-red-500";
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="p-4 font-mono text-slate-500">#${o.ma_don}</td>
+                    <td class="p-4 text-slate-300 text-xs">${o.ngay_dat}</td>
+                    <td class="p-4 text-white font-bold text-xs">${o.khach_hang}</td>
+                    <td class="p-4 font-mono text-emerald-400">${o.tong_tien.toLocaleString()} đ</td>
+                    <td class="p-4 ${statusColor} font-bold text-xs uppercase">${o.trang_thai}</td>
+                    <td class="p-4 text-xs text-slate-500 truncate max-w-[150px]" title="${o.dia_chi}">${o.dia_chi}</td>
+                    <td class="p-4 text-right">
+                        ${o.trang_thai === 'Processing' ? 
+                            `<button onclick="markDelivered(${o.ma_don})" class="px-3 py-1 bg-emerald-900/30 text-emerald-400 border border-emerald-900 rounded text-xs hover:bg-emerald-900/50">Deliver</button>` 
+                            : ''}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        async function markDelivered(id) {
+            if(!confirm("Mark order #" + id + " as Delivered?")) return;
+            const res = await api('/update_order_status', 'POST', {
+                ma_don: id, status: 'Delivered'
+            });
+            if(res && !res.error) fetchOrders();
+            else alert(res.error);
+        }
+
+        // Init
+        checkAuth();
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+/* --- 1. LIGHT GREEN TREE --- */
+:root {
+    /* ... existing vars ... */
+    --bg-body: #f4fcf4;
+    --bg-header: #ffffff;
+    --bg-card: #ffffff;
+    --bg-input: #ffffff;
+    
+    --text-main: #2d402d;
+    --text-muted: #6c8c6c;
+    
+    /* Standard Border (Inputs, Header) - Light Green */
+    --border: #c8e6c9; 
+    
+    /* NEW: Specific Book Card Border - Dark Green */
+    --border-card: #2e7d32; 
+    
+    --shadow: 0 4px 6px rgba(46, 125, 50, 0.1);
+    
+    --primary: #28a745;
+    --primary-hover: #218838;
+    --primary-text: #ffffff;
+    
+    --danger: #dc3545;
+    --danger-hover: #c82333;
+    
+    /* Book Detail Popup specific vars remain same... */
+    --bg-modal: #fdfbf7;         
+    --border-modal: #4caf50;
+    --text-modal: #2d402d;
+    --bg-modal-overlay: rgba(40, 167, 80, 0.05);
+}
+
+/* --- 2. DARK GOLDEN DUNGEON --- */
+[data-theme="dungeon"] {
+    /* ... existing vars ... */
+    --bg-body: #121212;
+    --bg-header: #1e1e1e;
+    --bg-card: #252525;
+    --bg-input: #2d2d2d;
+    
+    --text-main: #e0d6c0;
+    --text-muted: #a09070;
+    
+    /* Standard Border - Rusted Metal */
+    --border: #4a3b2a; 
+    
+    /* NEW: Specific Book Card Border - Golden */
+    --border-card: #ffd700;
+    
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    
+    --primary: #ffd700;
+    --primary-hover: #ffb300;
+    --primary-text: #000000;
+    
+    --danger: #cf6679;
+    --danger-hover: #b00020;
+    
+    /* Book Detail Popup specific vars remain same... */
+    --bg-modal: #2b2b2b;         
+    --border-modal: #b8860b;
+    --text-modal: #ffffff;
+    --bg-modal-overlay: rgba(0, 0, 0, 0.3);
+}
+
+/* Global Transitions */
+body, header, .card, input, select, button, .order-card, .cart-row {
+    transition: background-color 0.3s, color 0.3s, border-color 0.3s, box-shadow 0.3s;
+}

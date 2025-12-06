@@ -1,0 +1,26 @@
+.auth-input { 
+    width: 100%; margin-top: 10px;
+    background: var(--bg-input); /* Theme Match */
+    color: var(--text-main);
+    border: 1px solid var(--border);
+}
+
+.auth-link { 
+    display: block; margin-top: 15px; text-align: center; 
+    color: var(--primary); text-decoration: none; 
+}
+.auth-link:hover { text-decoration: underline; }
+
+.order-card {
+    border: 1px solid var(--border);
+    background: var(--bg-body); /* Slightly different from card */
+    padding: 10px; margin-bottom: 10px;
+    border-radius: 4px; 
+}
+
+.order-header { 
+    display: flex; justify-content: space-between; margin-bottom: 5px; 
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+}
+.order-status { font-size: 0.9rem; color: var(--text-muted); }

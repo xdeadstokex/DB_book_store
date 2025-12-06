@@ -1,0 +1,39 @@
+/* --- MAIN GRID --- */
+main#book-grid {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 20px;
+}
+
+/* --- BOOK CARDS --- */
+.card {
+    background: var(--bg-card);
+    
+    /* UPDATED: Uses specific border color variable */
+    border: 2px solid var(--border-card); 
+    
+    border-radius: 8px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.card:hover { transform: translateY(-3px); box-shadow: var(--shadow); }
+
+.card-img-wrapper {
+    width: 100%; height: 200px;
+    background: #000; 
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    border-bottom: 1px solid var(--border); /* Inner divider */
+}
+.card-img-wrapper img {
+    width: 100%; height: 100%; object-fit: cover;
+    transition: 0.3s;
+}
+.card:hover .card-img-wrapper img { transform: scale(1.05); }
+
+.card-body { padding: 15px; display: flex; flex-direction: column; flex: 1; }
+.price { color: var(--primary); font-weight: bold; font-size: 1.2rem; margin: 5px 0; }

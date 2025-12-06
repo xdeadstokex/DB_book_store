@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GoBooks</title>
+    
+    <link rel="stylesheet" href="themes.css">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="book_site.css">
+    <link rel="stylesheet" href="popup_auth.css">
+    <link rel="stylesheet" href="popup_cart.css">
+    <link rel="stylesheet" href="popup_detail.css">
+    <link rel="stylesheet" href="popup_menu.css">
+</head>
+<body>
+    
+    <header>
+        <div class="brand">GoBooks</div>
+        <div class="controls">
+            <select id="theme-select" style="width: auto; margin-right: 10px;">
+                <option value="tree">🌲 Tree Theme</option>
+                <option value="dungeon">🗝️ Dungeon Theme</option>
+            </select>
+            <button id="btn-cart" class="btn-outline">Cart</button>
+            <span id="auth-container"></span>
+        </div>
+    </header>
+
+    <div id="search-panel">
+        
+        <div class="search-toggle-wrapper">
+            <button id="btn-home" class="btn-green" style="margin-right: 15px; padding: 5px 15px; font-size: 0.9rem;">
+                🏠 Home
+            </button>
+
+            <span id="lbl-manual" class="toggle-label active">Manual Search</span>
+            <label class="switch">
+                <input type="checkbox" id="search-mode-toggle">
+                <span class="slider"></span>
+            </label>
+            <span id="lbl-browse" class="toggle-label">Browse Lists</span>
+        </div>
+
+        <div id="panel-manual">
+            <div id="search-simple">
+                <div id="search-trigger">🔍 Search by Title...</div>
+            </div>
+
+            <div id="search-advanced" style="display:none;">
+                <div class="search-row">
+                    <input type="text" id="s-title" class="search-adv-input" placeholder="Book Title (Required)">
+                </div>
+                <div class="search-row">
+                    <input type="text" id="s-author" class="search-adv-input" placeholder="Author (Optional)">
+                    <input type="text" id="s-cat" class="search-adv-input" placeholder="Category (Optional)">
+                </div>
+                <div class="search-row" style="justify-content: flex-end; margin-top:10px;">
+                    <button id="btn-cancel-search" class="btn-outline">Cancel</button>
+                    <button id="btn-search" class="btn-green" style="min-width: 100px;">Search</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="panel-browse" style="display:none;">
+            <p style="margin-bottom:10px; color:var(--text-muted); text-align:center;">Select a list to browse:</p>
+            <div style="display:flex; justify-content:center; gap:15px; flex-wrap:wrap;">
+                <button id="btn-authors" class="btn-outline" style="min-width:150px; padding:15px;">
+                    📖 Authors (A-Z)
+                </button>
+                <button id="btn-cats" class="btn-outline" style="min-width:150px; padding:15px;">
+                    🏷️ Categories (A-Z)
+                </button>
+            </div>
+        </div>
+
+    </div>
+
+    <div id="filter-bar" style="display:none; max-width:1200px; margin: 0 auto 10px; padding: 0 20px; align-items: center; gap: 10px;">
+        <button id="btn-history-back" class="btn-outline" style="width:auto; padding: 5px 15px; border-radius: 20px;">
+            &#8592; Back
+        </button>
+        <span id="filter-label" style="font-weight:bold; color:var(--primary);"></span>
+    </div>
+
+    <main id="book-grid">
+        <p style="text-align:center; color: var(--text-muted);">Loading books...</p>
+    </main>
+
+    <div id="modal">
+        <div id="modal-box">
+            <span id="btn-close-modal" class="close-btn">&times;</span>
+            <div id="modal-content"></div>
+        </div>
+    </div>
+
+    <script src="api.js"></script>
+    <script src="theme_manager.js"></script>
+    <script src="popup_auth.js"></script>
+    <script src="popup_cart.js"></script>
+    <script src="popup_detail.js"></script>
+    <script src="popup_menu.js"></script>
+    <script src="book_site.js"></script>
+</body>
+</html>

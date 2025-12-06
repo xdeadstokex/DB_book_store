@@ -1,0 +1,74 @@
+/* --- MENU MODAL STRUCTURE --- */
+.menu-wrapper {
+    display: flex; flex-direction: column; height: 100%;
+    color: var(--text-main);
+}
+
+.menu-header {
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 10px; margin-bottom: 10px;
+}
+
+/* Internal Filter Search */
+.menu-search {
+    width: 100%;
+    padding: 10px;
+    font-size: 1rem;
+    margin-bottom: 15px;
+    border: 2px solid var(--border);
+    background: var(--bg-input);
+    color: var(--text-main);
+    border-radius: 4px;
+}
+.menu-search:focus { border-color: var(--primary); outline: none; }
+
+/* --- A-Z SCROLLABLE LIST --- */
+.menu-list {
+    flex: 1;
+    overflow-y: auto;
+    padding-right: 5px;
+}
+
+/* Scrollbar */
+.menu-list::-webkit-scrollbar { width: 6px; }
+.menu-list::-webkit-scrollbar-thumb { background: var(--primary); border-radius: 3px; }
+
+/* --- GROUPING (A, B, C...) --- */
+.menu-group { margin-bottom: 20px; }
+
+.menu-letter {
+    font-size: 1.2rem; font-weight: bold;
+    color: var(--primary);
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 5px; margin-bottom: 10px;
+    position: sticky; top: 0;
+    background: var(--bg-card); /* Covers scrolling content */
+    z-index: 2;
+}
+
+/* The Grid of Names */
+.menu-items-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+}
+
+.menu-item {
+    padding: 8px;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all 0.2s;
+    text-align: center;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.menu-item:hover {
+    background: var(--primary);
+    color: var(--primary-text);
+    border-color: var(--primary);
+    transform: translateY(-2px);
+    box-shadow: var(--shadow);
+}
