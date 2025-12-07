@@ -36,19 +36,34 @@ INSERT INTO kho (ten_kho, dia_chi) VALUES
 (N'Kho Hải Phòng', N'Hải An, HP');
 
 PRINT '--- 3. BOOKS (Sach) - 12 Rows ---';
-INSERT INTO sach (ten_sach, nam_xuat_ban, so_trang, ngon_ngu, ma_nxb, do_tuoi, hinh_thuc, gia_hien_tai) VALUES
-(N'Tôi thấy hoa vàng trên cỏ xanh', 2010, 380, N'Tiếng Việt', 1, 10, N'Bìa mềm', 115000), -- 1
-(N'Dế Mèn phiêu lưu ký', 1941, 198, N'Tiếng Việt', 2, 6, N'Bìa cứng', 80000),    -- 2
-(N'Harry Potter và Hòn đá Phù thủy', 1997, 400, N'Tiếng Việt', 1, 10, N'Bìa mềm', 150000), -- 3
-(N'Rừng Na Uy', 1987, 500, N'Tiếng Việt', 5, 18, N'Bìa mềm', 130000), -- 4
-(N'Chí Phèo', 1941, 120, N'Tiếng Việt', 3, 16, N'Bìa mềm', 45000), -- 5
-(N'Tuổi trẻ đáng giá bao nhiêu', 2016, 250, N'Tiếng Việt', 5, 15, N'Bìa mềm', 90000), -- 6
-(N'Lược sử thời gian', 1988, 300, N'Tiếng Việt', 4, 16, N'Bìa cứng', 180000), -- 7
-(N'Mắt Biếc', 1990, 320, N'Tiếng Việt', 1, 13, N'Bìa mềm', 110000), -- 8
-(N'Kính Vạn Hoa', 1995, 200, N'Tiếng Việt', 2, 10, N'Bìa mềm', 65000), -- 9
-(N'Đất Rừng Phương Nam', 1957, 350, N'Tiếng Việt', 2, 12, N'Bìa cứng', 120000), -- 10
-(N'Sapiens: Lược sử loài người', 2011, 600, N'Tiếng Việt', 6, 18, N'Bìa cứng', 250000), -- 11
-(N'Nhà Giả Kim', 1988, 220, N'Tiếng Việt', 5, 12, N'Bìa mềm', 75000); -- 12
+INSERT INTO sach 
+(ten_sach, nam_xuat_ban, so_trang, ngon_ngu, ma_nxb, do_tuoi, hinh_thuc, gia_hien_tai, mo_ta)
+VALUES
+(N'Tôi thấy hoa vàng trên cỏ xanh', 2010, 380, N'Tiếng Việt', 1, 10, N'Bìa mềm', 115000,
+ N'Câu chuyện tuổi thơ trong trẻo, đầy ký ức và cảm xúc.'),
+(N'Dế Mèn phiêu lưu ký', 1941, 198, N'Tiếng Việt', 2, 6, N'Bìa cứng', 80000,
+ N'Hành trình phiêu lưu hài hước và nhân văn của chú Dế Mèn.'),
+(N'Harry Potter và Hòn đá Phù thủy', 1997, 400, N'Tiếng Việt', 1, 10, N'Bìa mềm', 150000,
+ N'Bắt đầu chuyến phiêu lưu phép thuật tại Hogwarts của Harry Potter.'),
+(N'Rừng Na Uy', 1987, 500, N'Tiếng Việt', 5, 18, N'Bìa mềm', 130000,
+ N'Tiểu thuyết sâu sắc về tuổi trẻ, cô đơn và tình yêu.'),
+(N'Chí Phèo', 1941, 120, N'Tiếng Việt', 3, 16, N'Bìa mềm', 45000,
+ N'Tragic story phản ánh hiện thực xã hội và số phận con người.'),
+(N'Tuổi trẻ đáng giá bao nhiêu', 2016, 250, N'Tiếng Việt', 5, 15, N'Bìa mềm', 90000,
+ N'Sách truyền cảm hứng về giá trị của thanh xuân và lựa chọn sống.'),
+(N'Lược sử thời gian', 1988, 300, N'Tiếng Việt', 4, 16, N'Bìa cứng', 180000,
+ N'Giải thích vũ trụ học một cách cô đọng, dễ hiểu và hấp dẫn.'),
+(N'Mắt Biếc', 1990, 320, N'Tiếng Việt', 1, 13, N'Bìa mềm', 110000,
+ N'Hành trình trưởng thành với những rung động đầu đời đầy tiếc nuối.'),
+(N'Kính Vạn Hoa', 1995, 200, N'Tiếng Việt', 2, 10, N'Bìa mềm', 65000,
+ N'Bộ truyện thiếu nhi kinh điển với các cuộc phiêu lưu hài hước.'),
+(N'Đất Rừng Phương Nam', 1957, 350, N'Tiếng Việt', 2, 12, N'Bìa cứng', 120000,
+ N'Một bức tranh mộc mạc, sâu sắc về miền Tây và tuổi thơ gian khổ.'),
+(N'Sapiens: Lược sử loài người', 2011, 600, N'Tiếng Việt', 6, 18, N'Bìa cứng', 250000,
+ N'Cách loài người tiến hóa và thay đổi thế giới qua từng giai đoạn.'),
+(N'Nhà Giả Kim', 1988, 220, N'Tiếng Việt', 5, 12, N'Bìa mềm', 75000,
+ N'Câu chuyện về hành trình theo đuổi ước mơ và tìm chính mình.');
+
 
 -- Link Books to Authors [12 rows]
 INSERT INTO sach_tac_gia (ma_sach, ma_tg) VALUES 
