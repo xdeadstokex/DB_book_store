@@ -240,6 +240,7 @@ func handle_apis() {
 	// Admin
 	http.HandleFunc("/admin/get_all_orders", admin_get_all_orders)
 	http.HandleFunc("/admin/restock_book", admin_restock_book)
+	http.HandleFunc("/get_deleted_books", get_deleted_books)
 
 	// Guest
 	http.HandleFunc("/create_guest_session", create_guest_session)
@@ -1178,4 +1179,34 @@ func get_book_sold_qty(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]int{
 		"tong_da_ban": soldQty,
 	})
+}
+
+
+// ###########################
+// ## 42. GET DELETED BOOK ###
+// ###########################
+func get_deleted_books(w http.ResponseWriter, r *http.Request) {
+	if set_CORS_headers(w, r, 1) { return }
+	
+	// The only difference is WHERE da_xoa = 1
+	query := "SELECT ma_sach, ten_sach, nam_xuat_ban, so_trang, gia_hien_tai, so_sao_trung_binh FROM sach WHERE da_xoa = 1"
+	
+	rows, err := db.Query(query)
+	if err != nil { sendError(w, 500, err.Error()); return }
+	defer rows.Close()
+
+	var books []Book
+	for rows.Next() {
+		var b Book
+		var nNam, nPage sql.NullInt64
+		var nPrice, nStar sql.NullFloat64
+		if err := rows.Scan(&b.MaSach, &b.TenSach, &nNam, &nPage, &nPrice, &nStar); err != nil { continue }
+		
+		b.NamXuatBan = nullToInt(nNam); b.SoTrang = nullToInt(nPage)
+		b.GiaHienTai = nullToFloat(nPrice); if b.GiaHienTai == -1 { b.GiaHienTai = 0 }
+		b.SoSaoTrungBinh = nullToFloat(nStar); if b.SoSaoTrungBinh == -1 { b.SoSaoTrungBinh = 0 }
+		books = append(books, b)
+	}
+	if books == nil { books = []Book{} }
+	json.NewEncoder(w).Encode(books)
 }
