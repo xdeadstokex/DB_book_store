@@ -122,39 +122,45 @@ EXEC sp_BTL_XoaNXB 1;
 
 -- =================================================================================
 -- REQUIREMENT 2.2: TRIGGERS
--- 2.2.1: Business Constraint (Pages > 0, Price >= 1000)
+-- 2.2.1: Business Constraint (Soft Delete Protection)
 -- 2.2.2: Derived Attribute (Auto-calculate Rating Average)
 -- =================================================================================
 
 PRINT ' ';
-PRINT '--- [2.2.1] DEMO TRIGGER: CONSTRAINT VALIDATION ---';
-PRINT 'Trying to insert a book with 0 pages (Should Fail by trg_ValidateSach_Data)...';
+PRINT '--- [2.2.1] DEMO TRIGGER: COMPLEX BUSINESS CONSTRAINT ---';
+PRINT 'Test: Try to modify a book that is marked as "Deleted" (Should Fail by trg_ValidateSach_Data)...';
 
+-- Step 1: Soft Delete Book 1
+UPDATE sach SET da_xoa = 1 WHERE ma_sach = 1;
+
+-- Step 2: Try to change its name (Trigger should stop this)
 BEGIN TRY
-    INSERT INTO sach (ten_sach, ma_nxb, so_trang, gia_hien_tai) 
-    VALUES (N'Sách Lỗi', 1, 0, 50000); -- 0 Pages
+    UPDATE sach SET ten_sach = N'Hacker Name' WHERE ma_sach = 1;
 END TRY
 BEGIN CATCH
     PRINT N'>> SUCCESS: Trigger caught the error: ' + ERROR_MESSAGE();
-END CATCH
+END CATCH;
+
+-- Step 3: Restore Book 1 (Cleanup for next test)
+UPDATE sach SET da_xoa = 0 WHERE ma_sach = 1;
+
 
 PRINT ' ';
 PRINT '--- [2.2.2] DEMO TRIGGER: DERIVED ATTRIBUTE CALCULATION ---';
-PRINT 'Demonstrating trg_TuDongTinhToan_Rating (Calculates Average Stars)';
+PRINT 'Test: Demonstrating trg_TuDongTinhToan_Rating (Calculates Average Stars)';
 
 -- 1. View current status of Book 1
 SELECT ma_sach, so_sao_trung_binh, tong_so_danh_gia FROM sach WHERE ma_sach = 1;
 
 -- 2. Add a new 1-star review (Simulating a bad review)
--- Note: Requires a user who bought the book. 
--- In insert_data.sql, User 1 bought Book 1. We will delete old reviews for fresh test.
+-- Note: User 1 bought Book 1. We delete old reviews to ensure a clean math test.
 DELETE FROM danh_gia WHERE ma_sach = 1 AND ma_khach_hang = 1;
 
 PRINT 'Adding a 1-star review...';
 INSERT INTO danh_gia (ma_sach, ma_khach_hang, so_sao, noi_dung) 
 VALUES (1, 1, 1, N'Test Trigger Calculation');
 
--- 3. View status again (Should decrease average)
+-- 3. View status again (Should decrease average to 1.0)
 SELECT ma_sach, so_sao_trung_binh, tong_so_danh_gia FROM sach WHERE ma_sach = 1;
 PRINT '>> SUCCESS: Average Star updated automatically without manual UPDATE query.';
 
